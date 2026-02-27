@@ -75,8 +75,10 @@ app.use("/api/orders", orderRoutes);
 //import full
 app.use("/api/admin", adminImportFull);
 
+console.log("ENV:", process.env.NODE_ENV);
+
 /* ===== START SERVER ===== */
 const PORT = process.env.PORT || 4000;
 server.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
+  console.log(`🚀 Server running on ${PORT}`);
 });
