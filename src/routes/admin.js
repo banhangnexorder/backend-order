@@ -2,12 +2,6 @@ import express from "express";
 import { pool } from "../db.js";
 import { verifyToken, requireRole } from "../middleware/auth.js";
 
-// ===== TIMEZONE VN HELPER =====
-function todayVN() {
-  return new Date().toLocaleDateString("en-CA", {
-    timeZone: "Asia/Ho_Chi_Minh",
-  }); // YYYY-MM-DD
-}
 
 const router = express.Router();
 
@@ -27,60 +21,66 @@ router.use(verifyToken, requireRole("admin"));
 ===================== */
 router.get("/stats", async (req, res) => {
   try {
-    const vnToday = todayVN();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
     const totalOrders = await pool.query(
       `
       SELECT COUNT(*) 
       FROM orders 
-      WHERE (created_at AT TIME ZONE 'UTC'
-             AT TIME ZONE 'Asia/Ho_Chi_Minh') >= $1
+      WHERE created_at >= $1
       `,
-      [vnToday]
+      [today]
     );
 
     const pendingOrders = await pool.query(
       `
       SELECT COUNT(*) 
       FROM orders 
-      WHERE status = 'pending'
-        AND (created_at AT TIME ZONE 'UTC'
-             AT TIME ZONE 'Asia/Ho_Chi_Minh') >= $1
+      WHERE status='pending' AND created_at >= $1
       `,
-      [vnToday]
+      [today]
     );
 
     const doneOrders = await pool.query(
       `
       SELECT COUNT(*) 
       FROM orders 
-      WHERE status = 'done'
-        AND (created_at AT TIME ZONE 'UTC'
-             AT TIME ZONE 'Asia/Ho_Chi_Minh') >= $1
+      WHERE status='done' AND created_at >= $1
       `,
-      [vnToday]
+      [today]
     );
 
     const revenue = await pool.query(
       `
-      SELECT COALESCE(SUM(total_price), 0) 
-      FROM orders 
-      WHERE status = 'done'
-        AND (created_at AT TIME ZONE 'UTC'
-             AT TIME ZONE 'Asia/Ho_Chi_Minh') >= $1
+      SELECT COALESCE(SUM(total),0) AS revenue
+      FROM orders
+      WHERE status='done' AND created_at >= $1
       `,
-      [vnToday]
+      [today]
+    );
+
+    const lateOrders = await pool.query(
+      `
+      SELECT id, table_id,
+        FLOOR(EXTRACT(EPOCH FROM (now() - created_at))/60) AS minutes
+      FROM orders
+      WHERE status='pending'
+        AND now() - created_at > interval '15 minutes'
+      ORDER BY minutes DESC
+      `
     );
 
     res.json({
-      totalOrders: totalOrders.rows[0].count,
-      pendingOrders: pendingOrders.rows[0].count,
-      doneOrders: doneOrders.rows[0].count,
-      revenue: revenue.rows[0].coalesce,
+      totalOrders: Number(totalOrders.rows[0].count),
+      pendingOrders: Number(pendingOrders.rows[0].count),
+      doneOrders: Number(doneOrders.rows[0].count),
+      revenue: Number(revenue.rows[0].revenue),
+      lateOrders: lateOrders.rows,
     });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Stats error" });
+    console.error("❌ ADMIN STATS ERROR:", err);
+    res.status(500).json({ error: "Admin stats error" });
   }
 });
 
@@ -88,47 +88,43 @@ router.get("/stats", async (req, res) => {
    ADMIN ORDERS (FILTER)
 ===================== */
 router.get("/orders", async (req, res) => {
-  try {
-    let { status, from, to } = req.query;
+  const { from, to, status } = req.query;
 
-    let query = `
+  let where = [];
+  let values = [];
+
+  if (from) {
+    values.push(from);
+    where.push(`created_at >= $${values.length}`);
+  }
+
+  if (to) {
+    values.push(to + " 23:59:59");
+    where.push(`created_at <= $${values.length}`);
+  }
+
+  if (status && status !== "all") {
+    values.push(status);
+    where.push(`status = $${values.length}`);
+  }
+
+  const whereSQL = where.length ? `WHERE ${where.join(" AND ")}` : "";
+
+  try {
+    const result = await pool.query(
+      `
       SELECT *
       FROM orders
-      WHERE 1=1
-    `;
-
-    const params = [];
-    let i = 1;
-
-    if (status) {
-      query += ` AND status = $${i++}`;
-      params.push(status);
-    }
-
-    if (from) {
-      query += `
-        AND (created_at AT TIME ZONE 'UTC'
-             AT TIME ZONE 'Asia/Ho_Chi_Minh') >= $${i++}
-      `;
-      params.push(from);
-    }
-
-    if (to) {
-      query += `
-        AND (created_at AT TIME ZONE 'UTC'
-             AT TIME ZONE 'Asia/Ho_Chi_Minh') <= $${i++}
-      `;
-      params.push(to);
-    }
-
-    query += ` ORDER BY created_at DESC`;
-
-    const result = await pool.query(query, params);
+      ${whereSQL}
+      ORDER BY created_at DESC
+      `,
+      values
+    );
 
     res.json(result.rows);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Orders error" });
+    console.error("❌ ADMIN FILTER ERROR:", err);
+    res.status(500).json({ error: "DB error" });
   }
 });
 
@@ -136,34 +132,108 @@ router.get("/orders", async (req, res) => {
    ADMIN DASHBOARD (RANGE)
 ===================== */
 router.get("/dashboard", async (req, res) => {
+  const { range = "today" } = req.query;
+
+  const now = new Date();
+  now.setHours(12, 0, 0, 0); // tránh lệch timezone
+
+  let fromDate;
+
+  if (range === "today") {
+    fromDate = now.toISOString().slice(0, 10);
+  }
+
+  if (range === "7days") {
+    const d = new Date(now);
+    d.setDate(d.getDate() - 6);
+    fromDate = d.toISOString().slice(0, 10);
+  }
+
+  if (range === "month") {
+    fromDate = `${now.getFullYear()}-${String(
+      now.getMonth() + 1
+    ).padStart(2, "0")}-01`;
+  }
+
+  if (range === "year") {
+    fromDate = `${now.getFullYear()}-01-01`;
+  }
+
   try {
-    let { from, to } = req.query;
-
-    const vnToday = todayVN();
-
-    const fromDate = from || vnToday;
-    const toDate = to || vnToday;
-
-    const result = await pool.query(
+    const totalOrders = await pool.query(
       `
-      SELECT 
-        DATE(created_at AT TIME ZONE 'UTC'
-             AT TIME ZONE 'Asia/Ho_Chi_Minh') as date,
-        COUNT(*) as orders,
-        SUM(total_price) as revenue
-      FROM orders
-      WHERE (created_at AT TIME ZONE 'UTC'
-             AT TIME ZONE 'Asia/Ho_Chi_Minh')
-            BETWEEN $1 AND $2
-      GROUP BY date
-      ORDER BY date
+      SELECT COUNT(*) 
+      FROM orders 
+      WHERE created_at >= $1
       `,
-      [fromDate, toDate]
+      [fromDate]
     );
 
-    res.json(result.rows);
+    const pendingOrders = await pool.query(
+      `
+      SELECT COUNT(*) 
+      FROM orders 
+      WHERE status='pending' AND created_at >= $1
+      `,
+      [fromDate]
+    );
+
+    const doneOrders = await pool.query(
+      `
+      SELECT COUNT(*) 
+      FROM orders 
+      WHERE status='done' AND created_at >= $1
+      `,
+      [fromDate]
+    );
+
+    const revenue = await pool.query(
+      `
+      SELECT COALESCE(SUM(total),0) AS revenue
+      FROM orders
+      WHERE status='done' AND created_at >= $1
+      `,
+      [fromDate]
+    );
+
+    const lateOrders = await pool.query(
+      `
+      SELECT id, table_id,
+        FLOOR(EXTRACT(EPOCH FROM (now() - created_at))/60) AS minutes
+      FROM orders
+      WHERE status='pending'
+        AND now() - created_at > interval '15 minutes'
+      ORDER BY minutes DESC
+      `
+    );
+
+    /* ===== CHART DATA ===== */
+    const chartData = await pool.query(
+      `
+      SELECT 
+        to_char(created_at, 'DD/MM') AS day,
+        COUNT(*) AS orders,
+        COALESCE(
+          SUM(CASE WHEN status='done' THEN total END), 0
+        ) AS revenue
+      FROM orders
+      WHERE created_at >= $1
+      GROUP BY day
+      ORDER BY MIN(created_at)
+      `,
+      [fromDate]
+    );
+
+    res.json({
+      totalOrders: Number(totalOrders.rows[0].count),
+      pendingOrders: Number(pendingOrders.rows[0].count),
+      doneOrders: Number(doneOrders.rows[0].count),
+      revenue: Number(revenue.rows[0].revenue),
+      lateOrders: lateOrders.rows,
+      chart: chartData.rows,
+    });
   } catch (err) {
-    console.error(err);
+    console.error("❌ DASHBOARD ERROR:", err);
     res.status(500).json({ error: "Dashboard error" });
   }
 });
