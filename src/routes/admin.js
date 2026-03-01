@@ -89,18 +89,22 @@ router.get("/stats", async (req, res) => {
 ===================== */
 router.get("/orders", async (req, res) => {
   const { from, to, status } = req.query;
-  console.log("🔥 QUERY PARAMS:", req.query);
+
   let where = [];
   let values = [];
 
   if (from) {
     values.push(from);
-    where.push(`created_at >= $${values.length}`);
+    where.push(`
+      (created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date >= $${values.length}
+    `);
   }
 
   if (to) {
-    values.push(to + " 23:59:59");
-    where.push(`created_at <= $${values.length}`);
+    values.push(to);
+    where.push(`
+      (created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date <= $${values.length}
+    `);
   }
 
   if (status && status !== "all") {

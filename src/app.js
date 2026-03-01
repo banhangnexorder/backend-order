@@ -84,3 +84,9 @@ const PORT = process.env.PORT || 4000;
 server.listen(PORT, () => {
   console.log(`🚀 Server running on ${PORT}`);
 });
+
+
+app.use((req, res, next) => {
+  res.set("Cache-Control", "no-store");
+  next();
+});
