@@ -89,7 +89,7 @@ router.get("/stats", async (req, res) => {
 ===================== */
 router.get("/orders", async (req, res) => {
   const { from, to, status } = req.query;
-
+  console.log("🔥 QUERY PARAMS:", req.query);
   let where = [];
   let values = [];
 
@@ -133,7 +133,7 @@ router.get("/orders", async (req, res) => {
 ===================== */
 router.get("/dashboard", async (req, res) => {
   const { range = "today" } = req.query;
-
+  
   const now = new Date();
   now.setHours(12, 0, 0, 0); // tránh lệch timezone
 
@@ -158,6 +158,9 @@ router.get("/dashboard", async (req, res) => {
   if (range === "year") {
     fromDate = `${now.getFullYear()}-01-01`;
   }
+
+  console.log("🔥 RANGE:", range);
+  console.log("🔥 FROM DATE:", fromDate);
 
   try {
     const totalOrders = await pool.query(
