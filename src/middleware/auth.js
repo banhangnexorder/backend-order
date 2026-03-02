@@ -13,9 +13,15 @@ export function verifyToken(req, res, next) {
   }
 }
 
-export function requireRole(role) {
+export const requireRole = (...roles) => {
   return (req, res, next) => {
-    if (req.user.role !== role) return res.sendStatus(403);
+    console.log("USER ROLE:", req.user.role);
+    console.log("ALLOWED:", roles);
+
+    if (!roles.includes(req.user.role)) {
+      return res.status(403).json({ error: "Không có quyền" });
+    }
+
     next();
   };
-}
+};
