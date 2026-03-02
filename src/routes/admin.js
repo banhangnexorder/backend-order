@@ -11,7 +11,7 @@ const router = express.Router();
 ===================== */
 // router.use(auth, allowRoles("admin"));
 router.use(verifyToken);
-router.use(requireRole("admin"));
+router.use(requireRole("admin", "staff"));
 
 /* ===== PROTECT ALL ROUTES BELOW ===== */
 router.use(verifyToken, requireRole("admin"));
