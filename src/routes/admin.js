@@ -9,7 +9,6 @@ const router = express.Router();
    🔐 BẢO MẬT CHUNG
    → Tất cả route bên dưới chỉ ADMIN vào được
 ===================== */
-// router.use(auth, allowRoles("admin"));
 router.use(verifyToken);
 router.use(requireRole("admin", "staff"));
 
