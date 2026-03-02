@@ -50,6 +50,15 @@ router.get("/stats", async (req, res) => {
       [today]
     );
 
+    const cancelledOrders = await pool.query(
+      `
+      SELECT COUNT(*) 
+      FROM orders 
+      WHERE status='cancelled' AND created_at >= $1
+      `,
+      [today]
+    );
+
     const revenue = await pool.query(
       `
       SELECT COALESCE(SUM(total),0) AS revenue
@@ -74,6 +83,7 @@ router.get("/stats", async (req, res) => {
       totalOrders: Number(totalOrders.rows[0].count),
       pendingOrders: Number(pendingOrders.rows[0].count),
       doneOrders: Number(doneOrders.rows[0].count),
+      cancelledOrders: Number(cancelledOrders.rows[0].count),
       revenue: Number(revenue.rows[0].revenue),
       lateOrders: lateOrders.rows,
     });
@@ -136,9 +146,9 @@ router.get("/orders", async (req, res) => {
 ===================== */
 router.get("/dashboard", async (req, res) => {
   const { range = "today" } = req.query;
-  
+
   const now = new Date();
-  now.setHours(12, 0, 0, 0); // tránh lệch timezone
+  now.setHours(12, 0, 0, 0);
 
   let fromDate;
 
@@ -162,46 +172,32 @@ router.get("/dashboard", async (req, res) => {
     fromDate = `${now.getFullYear()}-01-01`;
   }
 
-  console.log("🔥 RANGE:", range);
-  console.log("🔥 FROM DATE:", fromDate);
-
   try {
-    const totalOrders = await pool.query(
+    /* =========================
+       🔥 1 QUERY SUMMARY DUY NHẤT
+    ========================== */
+    const summary = await pool.query(
       `
-      SELECT COUNT(*) 
-      FROM orders 
+      SELECT
+        COUNT(*) AS total,
+        COUNT(*) FILTER (WHERE status='pending') AS pending,
+        COUNT(*) FILTER (WHERE status='done') AS done,
+        COUNT(*) FILTER (WHERE status='cancelled') AS cancelled,
+        COALESCE(
+          SUM(CASE WHEN status='done' THEN total END),
+          0
+        ) AS revenue
+      FROM orders
       WHERE created_at >= $1
       `,
       [fromDate]
     );
 
-    const pendingOrders = await pool.query(
-      `
-      SELECT COUNT(*) 
-      FROM orders 
-      WHERE status='pending' AND created_at >= $1
-      `,
-      [fromDate]
-    );
+    const row = summary.rows[0];
 
-    const doneOrders = await pool.query(
-      `
-      SELECT COUNT(*) 
-      FROM orders 
-      WHERE status='done' AND created_at >= $1
-      `,
-      [fromDate]
-    );
-
-    const revenue = await pool.query(
-      `
-      SELECT COALESCE(SUM(total),0) AS revenue
-      FROM orders
-      WHERE status='done' AND created_at >= $1
-      `,
-      [fromDate]
-    );
-
+    /* =========================
+       LATE ORDERS
+    ========================== */
     const lateOrders = await pool.query(
       `
       SELECT id, table_id,
@@ -213,7 +209,9 @@ router.get("/dashboard", async (req, res) => {
       `
     );
 
-    /* ===== CHART DATA ===== */
+    /* =========================
+       CHART DATA
+    ========================== */
     const chartData = await pool.query(
       `
       SELECT 
@@ -231,13 +229,15 @@ router.get("/dashboard", async (req, res) => {
     );
 
     res.json({
-      totalOrders: Number(totalOrders.rows[0].count),
-      pendingOrders: Number(pendingOrders.rows[0].count),
-      doneOrders: Number(doneOrders.rows[0].count),
-      revenue: Number(revenue.rows[0].revenue),
+      totalOrders: Number(row.total),
+      pendingOrders: Number(row.pending),
+      doneOrders: Number(row.done),
+      cancelledOrders: Number(row.cancelled),
+      revenue: Number(row.revenue),
       lateOrders: lateOrders.rows,
       chart: chartData.rows,
     });
+
   } catch (err) {
     console.error("❌ DASHBOARD ERROR:", err);
     res.status(500).json({ error: "Dashboard error" });
