@@ -147,34 +147,40 @@ router.get("/orders", async (req, res) => {
 router.get("/dashboard", async (req, res) => {
   const { range = "today" } = req.query;
 
-  const now = new Date();
-  now.setHours(12, 0, 0, 0);
-
-  let fromDate;
-
-  if (range === "today") {
-    fromDate = now.toISOString().slice(0, 10);
-  }
-
-  if (range === "7days") {
-    const d = new Date(now);
-    d.setDate(d.getDate() - 6);
-    fromDate = d.toISOString().slice(0, 10);
-  }
-
-  if (range === "month") {
-    fromDate = `${now.getFullYear()}-${String(
-      now.getMonth() + 1
-    ).padStart(2, "0")}-01`;
-  }
-
-  if (range === "year") {
-    fromDate = `${now.getFullYear()}-01-01`;
-  }
-
   try {
     /* =========================
-       🔥 1 QUERY SUMMARY DUY NHẤT
+       🇻🇳 LẤY NGÀY THEO GIỜ VIỆT NAM
+    ========================== */
+    const vnNow = new Date(
+      new Date().toLocaleString("en-US", {
+        timeZone: "Asia/Ho_Chi_Minh",
+      })
+    );
+
+    let fromDate;
+
+    if (range === "today") {
+      fromDate = vnNow.toISOString().slice(0, 10);
+    }
+
+    if (range === "7days") {
+      const d = new Date(vnNow);
+      d.setDate(d.getDate() - 6);
+      fromDate = d.toISOString().slice(0, 10);
+    }
+
+    if (range === "month") {
+      fromDate = `${vnNow.getFullYear()}-${String(
+        vnNow.getMonth() + 1
+      ).padStart(2, "0")}-01`;
+    }
+
+    if (range === "year") {
+      fromDate = `${vnNow.getFullYear()}-01-01`;
+    }
+
+    /* =========================
+       🔥 SUMMARY (1 QUERY)
     ========================== */
     const summary = await pool.query(
       `
@@ -188,7 +194,7 @@ router.get("/dashboard", async (req, res) => {
           0
         ) AS revenue
       FROM orders
-      WHERE created_at >= $1
+      WHERE (created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date >= $1
       `,
       [fromDate]
     );
@@ -215,13 +221,17 @@ router.get("/dashboard", async (req, res) => {
     const chartData = await pool.query(
       `
       SELECT 
-        to_char(created_at, 'DD/MM') AS day,
+        to_char(
+          created_at AT TIME ZONE 'Asia/Ho_Chi_Minh',
+          'DD/MM'
+        ) AS day,
         COUNT(*) AS orders,
         COALESCE(
-          SUM(CASE WHEN status='done' THEN total END), 0
+          SUM(CASE WHEN status='done' THEN total END),
+          0
         ) AS revenue
       FROM orders
-      WHERE created_at >= $1
+      WHERE (created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date >= $1
       GROUP BY day
       ORDER BY MIN(created_at)
       `,
@@ -229,11 +239,11 @@ router.get("/dashboard", async (req, res) => {
     );
 
     res.json({
-      totalOrders: Number(row.total),
-      pendingOrders: Number(row.pending),
-      doneOrders: Number(row.done),
-      cancelledOrders: Number(row.cancelled),
-      revenue: Number(row.revenue),
+      totalOrders: Number(row?.total || 0),
+      pendingOrders: Number(row?.pending || 0),
+      doneOrders: Number(row?.done || 0),
+      cancelledOrders: Number(row?.cancelled || 0),
+      revenue: Number(row?.revenue || 0),
       lateOrders: lateOrders.rows,
       chart: chartData.rows,
     });
