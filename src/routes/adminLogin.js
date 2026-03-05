@@ -21,7 +21,9 @@ router.post("/login", async (req, res) => {
     {
       id: user.id,
       username: user.username,
-      role: user.role, // admin | staff | kitchen
+      role: user.role,
+      tenant_id: user.tenant_id,
+      store_id: user.store_id
     },
     process.env.JWT_SECRET,
     { expiresIn: "8h" }

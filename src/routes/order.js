@@ -1,13 +1,15 @@
 import express from "express";
 import { pool } from "../db.js";
+import { verifyToken } from "../middleware/auth.js";
 
 const router = express.Router();
 
 /* ============================
    CREATE ORDER
 ============================ */
-router.post("/", async (req, res) => {
-  const { store_id, table_id, source, items, total } = req.body;
+router.post("/", verifyToken, async (req, res) => {
+  const { table_id, source, items, total } = req.body;
+  const store_id = req.user.store_id;
 
   const areas = [...new Set(items.map(i => i.area).filter(Boolean))];
 
@@ -37,7 +39,7 @@ router.post("/", async (req, res) => {
 
     const order = result.rows[0];
     const io = req.app.get("io");
-    io.emit("new_order", order);
+    io.to(`store_${store_id}`).emit("new_order", order);
 
     res.json({ success: true, order });
   } catch (err) {
@@ -49,30 +51,36 @@ router.post("/", async (req, res) => {
 /* ============================
    GET ORDERS
 ============================ */
-router.get("/:storeId", async (req, res) => {
-  try {
-    const result = await pool.query(
-      "SELECT * FROM orders WHERE store_id=$1 ORDER BY id DESC",
-      [req.params.storeId]
+router.get("/", verifyToken, async (req, res) => {
+
+  const store_id = req.user.store_id;
+
+  const result = await pool.query(
+    `
+    SELECT *
+    FROM orders
+    WHERE store_id=$1
+    ORDER BY id DESC
+    `,
+    [store_id]
     );
+
     res.json(result.rows);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
 });
 
 /* ============================
    UPDATE FULL ORDER
 ============================ */
-router.put("/:id/status", async (req, res) => {
+router.put("/:id/status",verifyToken, async (req, res) => {
+  const store_id = req.user.store_id;
   try {
     const result = await pool.query(
-      "UPDATE orders SET status=$1 WHERE id=$2 RETURNING *",
-      [req.body.status, req.params.id]
+      "UPDATE orders SET status=$1 WHERE id=$2 AND store_id=$3 RETURNING *",
+      [req.body.status, req.params.id, store_id]
     );
 
     const io = req.app.get("io");
-    io.emit("order_updated", result.rows[0]);
+    io.to(`store_${store_id}`).emit("order_updated", result.rows[0]);
 
     res.json({ success: true, order: result.rows[0] });
   } catch (err) {
@@ -83,10 +91,10 @@ router.put("/:id/status", async (req, res) => {
 /* ============================
    UPDATE AREA STATUS (🔥 FIX)
 ============================ */
-router.put("/:id/area-status", async (req, res) => {
+router.put("/:id/area-status", verifyToken, async (req, res) => {
   const { area } = req.body;
   const orderId = req.params.id;
-
+  const store_id = req.user.store_id;
   try {
     // 1️⃣ update khu hiện tại
     const result = await pool.query(
@@ -98,11 +106,15 @@ router.put("/:id/area-status", async (req, res) => {
         '"done"',
         true
       )
-      WHERE id=$1
+      WHERE id=$1 AND store_id=$2
       RETURNING *
       `,
-      [orderId]
+      [orderId, store_id]
     );
+
+    if (!result.rows.length) {
+      return res.status(404).json({ error: "Order not found" });
+    }
 
     let order = result.rows[0];
     const areas = order.areas_status || {};
@@ -129,7 +141,7 @@ router.put("/:id/area-status", async (req, res) => {
     }
 
     const io = req.app.get("io");
-    io.emit("order_updated", order);
+    io.to(`store_${store_id}`).emit("order_updated", order);
 
     res.json({ success: true, order });
   } catch (err) {
