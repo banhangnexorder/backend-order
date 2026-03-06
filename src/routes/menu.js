@@ -79,7 +79,7 @@ router.post("/upload-excel", verifyToken, upload.single("file"), async (req, res
 /* ===== GET MENU (CLIENT / POS) ===== */
 router.get("/", async (req, res) => {
 
-  const { store_id } = req.query;
+  const store_id = req.query.store_id;
 
   if (!store_id) {
     return res.status(400).json({ message: "Missing store_id" });
