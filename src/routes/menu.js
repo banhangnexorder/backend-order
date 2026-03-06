@@ -79,7 +79,11 @@ router.post("/upload-excel", verifyToken, upload.single("file"), async (req, res
 /* ===== GET MENU (CLIENT / POS) ===== */
 router.get("/", async (req, res) => {
 
-  const store_id = req.user.store_id;
+  const { store_id } = req.query;
+
+  if (!store_id) {
+    return res.status(400).json({ message: "Missing store_id" });
+  }
 
   const { rows } = await pool.query(`
   SELECT
@@ -116,8 +120,7 @@ router.get("/", async (req, res) => {
 router.get("/:menuId/toppings", async (req, res) => {
   try {
     const { menuId } = req.params;
-
-    const store_id = req.user.store_id;
+    const { store_id } = req.query;
 
     const { rows } = await pool.query(
       `
