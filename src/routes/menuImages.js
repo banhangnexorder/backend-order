@@ -1,6 +1,6 @@
 import express from "express";
 import multer from "multer";
-import sharp from "sharp";
+// import sharp from "sharp";
 import path from "path";
 import fs from "fs";
 import { pool } from "../db.js";
@@ -56,12 +56,12 @@ router.post(
         const finalName = `${imageKey}.webp`;
         const finalPath = path.join(uploadFinal, finalName);
 
-        await sharp(file.path)
-          .resize(600, 600, { fit: "cover" })
-          .webp({ quality: 80 })
-          .toFile(finalPath);
+        // await sharp(file.path)
+        //   .resize(600, 600, { fit: "cover" })
+        //   .webp({ quality: 80 })
+        //   .toFile(finalPath);
 
-        fs.unlinkSync(file.path);
+        // fs.unlinkSync(file.path);
 
         matched.push({
           product: item.name,
