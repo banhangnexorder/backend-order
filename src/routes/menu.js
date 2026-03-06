@@ -77,7 +77,7 @@ router.post("/upload-excel", verifyToken, upload.single("file"), async (req, res
 });
 
 /* ===== GET MENU (CLIENT / POS) ===== */
-router.get("/", verifyToken, async (req, res) => {
+router.get("/", async (req, res) => {
 
   const store_id = req.user.store_id;
 
