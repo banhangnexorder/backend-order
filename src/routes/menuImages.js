@@ -61,7 +61,7 @@ router.post(
         //   .webp({ quality: 80 })
         //   .toFile(finalPath);
 
-        // fs.unlinkSync(file.path);
+        fs.renameSync(file.path, finalPath);
 
         matched.push({
           product: item.name,
