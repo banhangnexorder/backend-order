@@ -110,8 +110,8 @@ router.get("/", async (req, res) => {
     const data = rows.map(item => ({
       ...item,
       image_url: item.image
-        ? `/uploads/menu/${item.image}.jpg`
-        : `/uploads/menu/default.jpg`
+        ? `/uploads/menu/${item.image}.webp`
+        : `/uploads/menu/default.webp`
     }));
 
     res.json(data);
