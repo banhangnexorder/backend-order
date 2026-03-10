@@ -78,42 +78,54 @@ router.post("/upload-excel", verifyToken, upload.single("file"), async (req, res
 
 /* ===== GET MENU (CLIENT / POS) ===== */
 router.get("/", async (req, res) => {
+  try {
 
-  const store_id = req.query.store_id;
+    const store_id = req.query.store_id;
 
-  if (!store_id) {
-    return res.status(400).json({ message: "Missing store_id" });
+    if (!store_id) {
+      return res.status(400).json({ message: "Missing store_id" });
+    }
+
+    const { rows } = await pool.query(`
+      SELECT
+      m.id,
+      m.name,
+      m.price,
+      m.area,
+      m.category_id,
+      c.name AS category_name,
+      m.image,
+      m.sort_order,
+      EXISTS (
+        SELECT 1 FROM menu_toppings mt WHERE mt.menu_id = m.id
+      ) AS has_toppings
+      FROM menu_items m
+      JOIN categories c ON c.id = m.category_id
+      WHERE
+      m.is_active = true
+      AND m.store_id = $1
+      ORDER BY c.sort_order, m.sort_order
+    `, [store_id]);
+
+    const data = rows.map(item => ({
+      ...item,
+      image_url: item.image
+        ? `/uploads/menu/${item.image}.jpg`
+        : `/uploads/menu/default.jpg`
+    }));
+
+    res.json(data);
+
+  } catch (err) {
+
+    console.error("GET MENU ERROR:", err);
+
+    res.status(500).json({
+      message: "Server error",
+      error: err.message
+    });
+
   }
-
-  const { rows } = await pool.query(`
-  SELECT
-  m.id,
-  m.name,
-  m.price,
-  m.area,
-  m.category_id,
-  c.name AS category_name,
-  m.image,
-  m.sort_order,
-  EXISTS (
-  SELECT 1 FROM menu_toppings mt WHERE mt.menu_id = m.id
-  ) AS has_toppings
-  FROM menu_items m
-  JOIN categories c ON c.id = m.category_id
-  WHERE
-  m.is_active = true
-  AND m.store_id = $1
-  ORDER BY c.sort_order, m.sort_order
-  `, [store_id]);
-
-  const data = rows.map(item => ({
-    ...item,
-    image_url: item.image
-      ? `/uploads/menu/${item.image}.jpg`
-      : `/uploads/menu/default.jpg`
-  }));
-
-  res.json(data);
 });
 
 // ===== GET TOPPINGS FOR MENU ITEM =====
