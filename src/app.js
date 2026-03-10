@@ -62,7 +62,7 @@ io.on("connection", socket => {
 /* ===== STATIC FILES ===== */
 
 app.use("/uploads", express.static(path.resolve("src/uploads")));
-app.use("/uploads/menu", express.static(path.resolve("src/uploads/menu")));
+// app.use("/uploads/menu", express.static(path.resolve("src/uploads/menu")));
 
 /* ===== PUBLIC ROUTES ===== */
 
