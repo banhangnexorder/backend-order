@@ -7,7 +7,7 @@ const router = express.Router();
 /* ============================
    CREATE ORDER
 ============================ */
-router.post("/", verifyToken, async (req, res) => {
+router.post("/", async (req, res) => {
   const { table_id, source, items, total } = req.body;
   const store_id = req.user.store_id;
 
