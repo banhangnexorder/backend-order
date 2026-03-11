@@ -8,8 +8,7 @@ const router = express.Router();
    CREATE ORDER
 ============================ */
 router.post("/", async (req, res) => {
-  const { table_id, source, items, total } = req.body;
-  const store_id = req.user.store_id;
+  const { store_id, table_id, source, items, total } = req.body;
 
   const areas = [...new Set(items.map(i => i.area).filter(Boolean))];
 
@@ -38,12 +37,14 @@ router.post("/", async (req, res) => {
     );
 
     const order = result.rows[0];
+
     const io = req.app.get("io");
     io.to(`store_${store_id}`).emit("new_order", order);
 
     res.json({ success: true, order });
+
   } catch (err) {
-    console.error("❌ CREATE ORDER ERROR:", err);
+    console.error("CREATE ORDER ERROR:", err);
     res.status(500).json({ error: "DB error" });
   }
 });
