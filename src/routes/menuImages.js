@@ -1,23 +1,29 @@
 import express from "express";
 import multer from "multer";
-import fs from "fs";
 import path from "path";
+import fs from "fs";
 import { pool } from "../db.js";
-import { normalizeText } from "../utils/normalizeText.js";
 import cloudinary from "../config/cloudinary.js";
+import { normalizeText } from "../utils/normalizeText.js";
 
 const router = express.Router();
+
+/* ===== MULTER TEMP ===== */
 
 const upload = multer({
   dest: "tmp/",
   limits: { fileSize: 5 * 1024 * 1024 }
 });
 
+/* ===== UPLOAD MENU IMAGES ===== */
+
 router.post("/upload", upload.array("images", 50), async (req, res) => {
 
   if (!req.files || req.files.length === 0) {
-    return res.status(400).json({ message: "❌ Không có ảnh" });
+    return res.status(400).json({ message: "Không có ảnh" });
   }
+
+  const store_id = req.user.store_id;
 
   const client = await pool.connect();
 
@@ -29,53 +35,56 @@ router.post("/upload", upload.array("images", 50), async (req, res) => {
     for (const file of req.files) {
 
       const rawName = path.parse(file.originalname).name;
+
       const imageKey = normalizeText(rawName);
 
+      /* tìm menu item */
+
       const { rows } = await client.query(
-        `
-        SELECT id, name, store_id
-        FROM menu_items
-        WHERE image = $1
-        `,
-        [imageKey]
+        `SELECT id, name FROM menu_items 
+         WHERE image = $1 AND store_id = $2`,
+        [imageKey, store_id]
       );
 
       if (!rows.length) {
+
         notMatched.push(rawName);
+
         fs.unlinkSync(file.path);
+
         continue;
       }
 
       const item = rows[0];
 
-      /* ===== UPLOAD CLOUDINARY ===== */
+      /* upload cloudinary */
 
       const result = await cloudinary.uploader.upload(file.path, {
-        folder: `menu/store_${item.store_id}`,
+
+        folder: `stores/${store_id}/menu`,
+
         public_id: imageKey,
+
         overwrite: true
+
       });
+
+      /* update db */
+
+      await client.query(
+        `UPDATE menu_items
+         SET image = $1
+         WHERE id = $2`,
+        [result.secure_url, item.id]
+      );
 
       fs.unlinkSync(file.path);
 
-      const imageUrl = result.secure_url;
-
-      /* ===== UPDATE DB ===== */
-
-      await client.query(
-        `
-        UPDATE menu_items
-        SET image = $1
-        WHERE id = $2
-        `,
-        [imageUrl, item.id]
-      );
-
       matched.push({
         product: item.name,
-        store_id: item.store_id,
-        image: imageUrl
+        image: result.secure_url
       });
+
     }
 
     res.json({
@@ -89,15 +98,14 @@ router.post("/upload", upload.array("images", 50), async (req, res) => {
 
     console.error("UPLOAD IMAGE ERROR:", err);
 
-    res.status(500).json({
-      message: "❌ Lỗi upload ảnh"
-    });
+    res.status(500).json({ message: "Lỗi upload ảnh" });
 
   } finally {
 
     client.release();
 
   }
+
 });
 
 export default router;
