@@ -110,7 +110,7 @@ router.get("/", async (req, res) => {
     const data = rows.map(item => ({
       ...item,
       image_url: item.image
-        ? `/uploads/menu/${item.image}`
+        ? `${item.image}`
         : `/uploads/menu/default`
     }));
 
