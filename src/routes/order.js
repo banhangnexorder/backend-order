@@ -23,7 +23,7 @@ router.post("/", async (req, res) => {
       INSERT INTO orders (
         tenant_id, store_id, table_id, source, items, total, status, areas_status
       )
-      VALUES ($1,$2,$3,$4,$5,'pending',$6)
+      VALUES ($1,$2,$3,$4,$5,$6,'pending',$7)
       RETURNING *
       `,
       [
