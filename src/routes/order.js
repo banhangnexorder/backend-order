@@ -8,7 +8,7 @@ const router = express.Router();
    CREATE ORDER
 ============================ */
 router.post("/", async (req, res) => {
-  const { store_id, table_id, source, items, total } = req.body;
+  const { tenant_id, store_id, table_id, source, items, total } = req.body;
 
   const areas = [...new Set(items.map(i => i.area).filter(Boolean))];
 
@@ -21,12 +21,13 @@ router.post("/", async (req, res) => {
     const result = await pool.query(
       `
       INSERT INTO orders (
-        store_id, table_id, source, items, total, status, areas_status
+        tenant_id, store_id, table_id, source, items, total, status, areas_status
       )
       VALUES ($1,$2,$3,$4,$5,'pending',$6)
       RETURNING *
       `,
       [
+        tenant_id,
         store_id,
         table_id,
         source,
