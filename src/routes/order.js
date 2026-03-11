@@ -8,20 +8,39 @@ const router = express.Router();
    CREATE ORDER
 ============================ */
 router.post("/", async (req, res) => {
-  const { tenant_id, store_id, table_id, source, items, total } = req.body;
-
-  const areas = [...new Set(items.map(i => i.area).filter(Boolean))];
-
-  const areasStatus =
-    areas.length > 0
-      ? areas.reduce((acc, a) => ({ ...acc, [a]: "pending" }), {})
-      : {};
-
   try {
+    const { store_id, table_id, source, items = [], total } = req.body;
+
+    // lấy tenant_id từ store
+    const store = await pool.query(
+      "SELECT tenant_id FROM stores WHERE id=$1",
+      [store_id]
+    );
+
+    if (!store.rows.length) {
+      return res.status(400).json({ error: "Store not found" });
+    }
+
+    const tenant_id = store.rows[0].tenant_id;
+
+    const areas = [...new Set(items.map(i => i.area).filter(Boolean))];
+
+    const areasStatus =
+      areas.length > 0
+        ? areas.reduce((acc, a) => ({ ...acc, [a]: "pending" }), {})
+        : {};
+
     const result = await pool.query(
       `
       INSERT INTO orders (
-        tenant_id, store_id, table_id, source, items, total, status, areas_status
+        tenant_id,
+        store_id,
+        table_id,
+        source,
+        items,
+        total,
+        status,
+        areas_status
       )
       VALUES ($1,$2,$3,$4,$5,$6,'pending',$7)
       RETURNING *
@@ -37,16 +56,11 @@ router.post("/", async (req, res) => {
       ]
     );
 
-    const order = result.rows[0];
-
-    const io = req.app.get("io");
-    io.to(`store_${store_id}`).emit("new_order", order);
-
-    res.json({ success: true, order });
+    res.json({ success: true, order: result.rows[0] });
 
   } catch (err) {
     console.error("CREATE ORDER ERROR:", err);
-    res.status(500).json({ error: "DB error" });
+    res.status(500).json({ error: err.message });
   }
 });
 
