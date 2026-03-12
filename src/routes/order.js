@@ -87,19 +87,29 @@ router.get("/", verifyToken, async (req, res) => {
 /* ============================
    UPDATE FULL ORDER
 ============================ */
-router.put("/:id/status",verifyToken, async (req, res) => {
+router.put("/:id/status", verifyToken, async (req, res) => {
   const store_id = req.user.store_id;
+
+  console.log("UPDATE ORDER DEBUG");
+  console.log("status:", req.body.status);
+  console.log("order id:", req.params.id);
+  console.log("store_id from token:", store_id);
+
   try {
     const result = await pool.query(
       "UPDATE orders SET status=$1 WHERE id=$2 AND store_id=$3 RETURNING *",
       [req.body.status, req.params.id, store_id]
     );
 
+    console.log("rows updated:", result.rows);
+
     const io = req.app.get("io");
     io.to(`store_${store_id}`).emit("order_updated", result.rows[0]);
 
     res.json({ success: true, order: result.rows[0] });
+
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: "DB error" });
   }
 });
