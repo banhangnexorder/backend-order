@@ -20,10 +20,11 @@ router.post("/login", async (req, res) => {
   if (!ok) return res.status(401).json({ error: "Sai mật khẩu" });
 
   const token = jwt.sign(
-    { id: user.id, role: user.role },
-    process.env.JWT_SECRET,
-    { expiresIn: "1d" }
-  );
+      { id: user.id, role: user.role, store_id: user.store_id,
+      tenant_id: user.tenant_id },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
 
   res.json({
     token,
