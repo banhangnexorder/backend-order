@@ -11,7 +11,6 @@ router.post("/", async (req, res) => {
   try {
     const { store_id, table_id, source, items = [], total } = req.body;
 
-    // lấy tenant_id từ store
     const store = await pool.query(
       "SELECT tenant_id FROM stores WHERE id=$1",
       [store_id]
@@ -56,7 +55,13 @@ router.post("/", async (req, res) => {
       ]
     );
 
-    res.json({ success: true, order: result.rows[0] });
+    const order = result.rows[0];
+
+    /* 🔥 EMIT REALTIME */
+    const io = req.app.get("io");
+    io.to(`store_${store_id}`).emit("new_order", order);
+
+    res.json({ success: true, order });
 
   } catch (err) {
     console.error("CREATE ORDER ERROR:", err);
