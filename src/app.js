@@ -17,7 +17,10 @@ import adminImportFull from "./routes/adminImportFull.js";
 
 /* ===== MIDDLEWARE ===== */
 import adminAuth from "./middleware/adminAuth.js";
-import rateLimit from "express-rate-limit";
+
+dotenv.config();
+
+const app = express();
 
 const limiter = rateLimit({
   windowMs: 1000,
@@ -25,10 +28,6 @@ const limiter = rateLimit({
 });
 
 app.use("/api/", limiter);
-
-dotenv.config();
-
-const app = express();
 
 app.set("trust proxy", 1);
 
@@ -125,3 +124,11 @@ async function startServer() {
 }
 
 startServer();
+
+process.on("uncaughtException", (err) => {
+  console.error("UNCAUGHT EXCEPTION:", err);
+});
+
+process.on("unhandledRejection", (err) => {
+  console.error("UNHANDLED REJECTION:", err);
+});
