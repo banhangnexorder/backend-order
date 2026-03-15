@@ -54,6 +54,13 @@ app.set("io", io);
 io.on("connection", socket => {
   console.log("⚡ Client connected:", socket.id);
 
+  /* JOIN STORE ROOM */
+  socket.on("join_store", (store_id) => {
+    const room = `store_${store_id}`;
+    socket.join(room);
+    console.log(`🏪 Socket ${socket.id} joined ${room}`);
+  });
+
   socket.on("disconnect", () => {
     console.log("❌ Client disconnected:", socket.id);
   });
