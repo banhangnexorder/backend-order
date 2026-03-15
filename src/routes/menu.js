@@ -6,6 +6,7 @@ import {normalizeText} from "../utils/normalizeText.js";
 import { verifyToken } from "../middleware/auth.js";
 
 const router = express.Router();
+let menuCache = null;
 
 /* ===== UPLOAD CONFIG ===== */
 const upload = multer({
@@ -85,6 +86,9 @@ router.get("/", async (req, res) => {
     if (!store_id) {
       return res.status(400).json({ message: "Missing store_id" });
     }
+    if (menuCache) {
+      return res.json(menuCache);
+    }
 
     const { rows } = await pool.query(`
       SELECT
@@ -113,6 +117,7 @@ router.get("/", async (req, res) => {
         ? `${item.image}`
         : `/uploads/menu/default`
     }));
+    menuCache = data;
 
     res.json(data);
 

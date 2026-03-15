@@ -4,6 +4,7 @@ import { Server } from "socket.io";
 import cors from "cors";
 import dotenv from "dotenv";
 import path from "path";
+import { pool } from "./db.js";
 
 /* ===== ROUTES ===== */
 import orderRoutes from "./routes/order.js";
@@ -16,6 +17,14 @@ import adminImportFull from "./routes/adminImportFull.js";
 
 /* ===== MIDDLEWARE ===== */
 import adminAuth from "./middleware/adminAuth.js";
+import rateLimit from "express-rate-limit";
+
+const limiter = rateLimit({
+  windowMs: 1000,
+  max: 50
+});
+
+app.use("/api/", limiter);
 
 dotenv.config();
 
@@ -92,10 +101,27 @@ app.use("/api/orders", orderRoutes);
 
 console.log("ENV:", process.env.NODE_ENV);
 
-/* ===== START SERVER ===== */
 
 const PORT = process.env.PORT || 4000;
 
-server.listen(PORT, () => {
-  console.log(`🚀 Server running on ${PORT}`);
-});
+async function startServer() {
+
+  try {
+
+    await pool.query("SELECT 1");
+
+    console.log("✅ PostgreSQL ready");
+
+    server.listen(PORT, () => {
+      console.log(`🚀 Server running on ${PORT}`);
+    });
+
+  } catch (err) {
+
+    console.error("❌ DB start error:", err);
+
+  }
+
+}
+
+startServer();

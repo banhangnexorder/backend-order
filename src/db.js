@@ -3,11 +3,26 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const { Pool } = pg;
+
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
+  ssl: { rejectUnauthorized: false },
+
+  // tối đa connection
+  max: 10,
+
+  // connection rảnh 30s sẽ đóng
+  idleTimeoutMillis: 30000,
+
+  // timeout khi connect
+  connectionTimeoutMillis: 2000
 });
 
-// pool.connect()
-//   .then(() => console.log("✅ DB connected"))
-//   .catch(err => console.error("❌ DB connection error:", err));
+// log pool
+pool.on("connect", () => {
+  console.log("🟢 DB connected");
+});
+
+pool.on("error", (err) => {
+  console.error("🔴 DB error", err);
+});
