@@ -91,20 +91,15 @@ const PORT = process.env.PORT || 4000;
 async function startServer() {
 
   try {
-
     await pool.query("SELECT 1");
-
     console.log("✅ PostgreSQL ready");
-
-    server.listen(PORT, () => {
-      console.log(`🚀 Server running on ${PORT}`);
-    });
-
   } catch (err) {
-
-    console.error("❌ DB start error:", err);
-
+    console.error("❌ DB error (still start server):", err.message);
   }
+
+  server.listen(PORT, () => {
+    console.log(`🚀 Server running on ${PORT}`);
+  });
 
 }
 
