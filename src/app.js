@@ -18,6 +18,7 @@ import adminImportFull from "./routes/adminImportFull.js";
 /* ===== MIDDLEWARE ===== */
 import adminAuth from "./middleware/adminAuth.js";
 import rateLimit from "express-rate-limit";
+import qrRoutes from "./routes/qr.js";
 
 dotenv.config();
 
@@ -29,8 +30,8 @@ const limiter = rateLimit({
 });
 
 app.use("/api/", limiter);
-
 app.set("trust proxy", 1);
+app.use("/api/qr", qrRoutes);
 
 /* ===== GLOBAL MIDDLEWARE ===== */
 
@@ -76,31 +77,14 @@ io.on("connection", socket => {
 });
 
 /* ===== STATIC FILES ===== */
-
 app.use("/uploads", express.static(path.resolve("src/uploads")));
-
-/* ===== PUBLIC ROUTES ===== */
-
 app.use("/api/admin", adminLogin);
-
 app.use("/api", authRoutes);
-
 app.use("/api/menu", menuRoutes);
-
-/* ===== ADMIN PROTECTED ROUTES ===== */
-
 app.use("/api/admin", adminAuth, adminRoutes);
-
 app.use("/api/admin/menu-images", adminAuth, menuImages);
-
 app.use("/api/admin", adminImportFull);
-
-/* ===== ORDERS ===== */
-
 app.use("/api/orders", orderRoutes);
-
-console.log("ENV:", process.env.NODE_ENV);
-
 
 const PORT = process.env.PORT || 4000;
 
