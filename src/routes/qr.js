@@ -24,7 +24,7 @@ router.get("/generate", (req, res) => {
 
   res.json({
     token,
-    url: `${process.env.CLIENT_URL}/menu?t=${token}`
+    url: `${process.env.FRONTEND_URL}/menu?t=${token}`
   });
 });
 
