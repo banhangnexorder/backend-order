@@ -4,6 +4,7 @@ import XLSX from "xlsx";
 import { pool } from "../db.js";
 import {normalizeText} from "../utils/normalizeText.js";
 import { verifyToken } from "../middleware/auth.js";
+import { verifyQrToken } from "../middleware/verifyQrToken.js";
 
 const router = express.Router();
 let menuCache = null;
@@ -78,10 +79,10 @@ router.post("/upload-excel", verifyToken, upload.single("file"), async (req, res
 });
 
 /* ===== GET MENU (CLIENT / POS) ===== */
-router.get("/", async (req, res) => {
+router.get("/", verifyQrToken, async (req, res) => {
   try {
 
-    const store_id = req.query.store_id;
+    const { store_id } = req.qr;
 
     if (!store_id) {
       return res.status(400).json({ message: "Missing store_id" });
@@ -134,10 +135,10 @@ router.get("/", async (req, res) => {
 });
 
 // ===== GET TOPPINGS FOR MENU ITEM =====
-router.get("/:menuId/toppings", async (req, res) => {
+router.get("/:menuId/toppings", verifyQrToken, async (req, res) => {
   try {
     const { menuId } = req.params;
-    const { store_id } = req.query;
+    const { store_id } = req.qr;
 
     const { rows } = await pool.query(
       `

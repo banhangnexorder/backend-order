@@ -1,15 +1,19 @@
 import express from "express";
 import { pool } from "../db.js";
 import { verifyToken } from "../middleware/auth.js";
+import { verifyQrToken } from "../middleware/verifyQrToken.js";
 
 const router = express.Router();
 
 /* ============================
    CREATE ORDER
 ============================ */
-router.post("/", async (req, res) => {
+router.post("/", verifyQrToken, async (req, res) => {
   try {
-    const { store_id, table_id, source, items = [], total } = req.body;
+    const { store_id, table_id } = req.qr;
+    const { items = [], total } = req.body;
+
+    const source = "qr"; // ✅ FIX
 
     const store = await pool.query(
       "SELECT tenant_id FROM stores WHERE id=$1",
@@ -57,7 +61,6 @@ router.post("/", async (req, res) => {
 
     const order = result.rows[0];
 
-    /* 🔥 EMIT REALTIME */
     const io = req.app.get("io");
     io.to(`store_${store_id}`).emit("new_order", order);
 
