@@ -79,8 +79,8 @@ io.on("connection", socket => {
 /* ===== STATIC FILES ===== */
 app.use("/uploads", express.static(path.resolve("src/uploads")));
 app.use("/api/admin", adminLogin);
-app.use("/api", authRoutes);
 app.use("/api/menu", menuRoutes);
+app.use("/api", authRoutes);
 app.use("/api/admin", adminAuth, adminRoutes);
 app.use("/api/admin/menu-images", adminAuth, menuImages);
 app.use("/api/admin", adminImportFull);

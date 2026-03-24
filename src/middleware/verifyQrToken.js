@@ -3,6 +3,7 @@ export function verifyQrToken(req, res, next) {
 
   console.log("TOKEN:", token);
   console.log("SECRET:", process.env.JWT_SECRET);
+  console.log("✅ VERIFY QR RUNNING");
 
   if (!token) {
     return res.status(400).json({ message: "Missing QR token" });

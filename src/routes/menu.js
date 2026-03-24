@@ -80,6 +80,7 @@ router.post("/upload-excel", verifyToken, upload.single("file"), async (req, res
 
 /* ===== GET MENU (CLIENT / POS) ===== */
 router.get("/", verifyQrToken, async (req, res) => {
+  console.log("✅ HIT MENU API");
   try {
 
     const { store_id } = req.qr;
