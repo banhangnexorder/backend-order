@@ -1,6 +1,9 @@
 export function verifyQrToken(req, res, next) {
   const token = req.query.t || req.body.t;
 
+  console.log("TOKEN:", token);
+  console.log("SECRET:", process.env.JWT_SECRET);
+
   if (!token) {
     return res.status(400).json({ message: "Missing QR token" });
   }
