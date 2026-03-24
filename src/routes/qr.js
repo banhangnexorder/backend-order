@@ -26,6 +26,7 @@ router.get("/generate", (req, res) => {
     token,
     url: `${process.env.FRONTEND_URL}/menu?t=${token}`
   });
+  console.log("GENERATE SECRET:", process.env.JWT_SECRET);
 });
 
 export default router;
