@@ -1,3 +1,4 @@
+import jwt from "jsonwebtoken";
 export function verifyQrToken(req, res, next) {
   const token = req.query.t || req.body.t;
 
