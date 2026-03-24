@@ -1,6 +1,6 @@
 import jwt from "jsonwebtoken";
 export function verifyQrToken(req, res, next) {
-  const token = req.query.t || req.body.t;
+  const token = req.query.t || req.body.t || req.headers["x-qr-token"];
 
   console.log("TOKEN:", token);
   console.log("SECRET:", process.env.JWT_SECRET);
