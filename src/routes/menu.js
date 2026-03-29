@@ -5,6 +5,7 @@ import { pool } from "../db.js";
 import {normalizeText} from "../utils/normalizeText.js";
 import { verifyToken } from "../middleware/auth.js";
 import { verifyQrToken } from "../middleware/verifyQrToken.js";
+import { getCache, setCache } from "../utils/cache.js";
 
 const router = express.Router();
 let menuCache = null;
@@ -80,58 +81,57 @@ router.post("/upload-excel", verifyToken, upload.single("file"), async (req, res
 
 /* ===== GET MENU (CLIENT / POS) ===== */
 router.get("/", verifyQrToken, async (req, res) => {
-  console.log("✅ HIT MENU API");
   try {
-
     const { store_id } = req.qr;
 
     if (!store_id) {
       return res.status(400).json({ message: "Missing store_id" });
     }
-    if (menuCache) {
-      return res.json(menuCache);
+
+    const cacheKey = `menu:${store_id}`;
+
+    const cached = getCache(cacheKey);
+
+    if (cached) {
+      console.log("⚡ CACHE HIT:", cacheKey);
+      return res.json(cached);
     }
+
+    console.log("🔥 DB HIT:", cacheKey);
 
     const { rows } = await pool.query(`
       SELECT
-      m.id,
-      m.name,
-      m.price,
-      m.area,
-      m.category_id,
-      c.name AS category_name,
-      m.image,
-      m.sort_order,
-      EXISTS (
-        SELECT 1 FROM menu_toppings mt WHERE mt.menu_id = m.id
-      ) AS has_toppings
+        m.id,
+        m.name,
+        m.price,
+        m.area,
+        m.category_id,
+        c.name AS category_name,
+        m.image,
+        m.sort_order,
+        EXISTS (
+          SELECT 1 FROM menu_toppings mt WHERE mt.menu_id = m.id
+        ) AS has_toppings
       FROM menu_items m
       JOIN categories c ON c.id = m.category_id
       WHERE
-      m.is_active = true
-      AND m.store_id = $1
+        m.is_active = true
+        AND m.store_id = $1
       ORDER BY c.sort_order, m.sort_order
     `, [store_id]);
 
     const data = rows.map(item => ({
       ...item,
-      image_url: item.image
-        ? `${item.image}`
-        : `/uploads/menu/default`
+      image_url: item.image || "/uploads/menu/default"
     }));
-    menuCache = data;
+
+    setCache(cacheKey, data);
 
     res.json(data);
 
   } catch (err) {
-
     console.error("GET MENU ERROR:", err);
-
-    res.status(500).json({
-      message: "Server error",
-      error: err.message
-    });
-
+    res.status(500).json({ message: err.message });
   }
 });
 
