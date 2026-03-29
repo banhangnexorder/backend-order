@@ -13,185 +13,201 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 }
 });
 
-router.post("/import/full", upload.single("file"), async (req, res) => {
-
-  const client = await pool.connect();
-
-  try {
-    /* =========================================
-       0. AUTH → LẤY TENANT + STORE
-    ========================================= */
-    const authHeader = req.headers.authorization;
-
-    if (!authHeader) {
-      return res.status(401).json({ message: "Missing admin token" });
+router.post(
+  "/import/full",
+  upload.single("file"),
+  async (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ message: "❌ Chưa upload file Excel" });
     }
-
-    const token = authHeader.split(" ")[1];
-    const decoded = jwt.verify(token, process.env.JWT_SECRET); //Lấy tenant/store từ token
-
-    const tenantId = decoded.tenant_id;
-    const storeId = decoded.store_id;
-
-    if (!tenantId || !storeId) {
-      throw new Error("Token thiếu tenant/store");
-    }
-
-    /* =========================================
-       1. READ FILE
-    ========================================= */
-    const workbook = XLSX.readFile(req.file.path);
-
-    const menuSheet = workbook.Sheets["menu"];
-    const toppingSheet = workbook.Sheets["toppings"];
-    const menuToppingSheet = workbook.Sheets["menu_toppings"];
-
-    if (!menuSheet || !toppingSheet || !menuToppingSheet) {
-      throw new Error("File thiếu sheet");
-    }
-
-    const menus = XLSX.utils.sheet_to_json(menuSheet, { defval: "" });
-    const toppings = XLSX.utils.sheet_to_json(toppingSheet, { defval: "" });
-    const menuToppings = XLSX.utils.sheet_to_json(menuToppingSheet, { defval: "" });
 
     const overwrite = req.body.overwrite === "true";
 
-    await client.query("BEGIN");
+    // 🔥 LẤY TỪ LOGIN ADMIN (QUAN TRỌNG)
+    const tenantId = req.user?.tenant_id;
+    const storeId = req.user?.store_id;
 
-    /* =========================================
-       2. IMPORT TOPPINGS (UPSERT)
-    ========================================= */
-    for (const row of toppings) {
+    if (!tenantId || !storeId) {
+      return res.status(401).json({ message: "❌ Missing tenant/store" });
+    }
 
-      const name = row.name?.trim();
-      if (!name) continue;
+    const client = await pool.connect();
 
-      const normalized = normalizeText(name);
+    try {
+      const workbook = XLSX.readFile(req.file.path);
 
-      await client.query(
-        `
-        INSERT INTO toppings 
-        (name, normalized_name, price, is_active, tenant_id, store_id)
-        VALUES ($1,$2,$3,$4,$5,$6)
-        ON CONFLICT (normalized_name, tenant_id)
-        DO UPDATE SET
-          price = EXCLUDED.price,
-          is_active = EXCLUDED.is_active
-        `,
-        [
+      const menus = XLSX.utils.sheet_to_json(workbook.Sheets["menu"], { defval: "" });
+      const toppings = XLSX.utils.sheet_to_json(workbook.Sheets["toppings"], { defval: "" });
+      const menuToppings = XLSX.utils.sheet_to_json(workbook.Sheets["menu_toppings"], { defval: "" });
+
+      await client.query("BEGIN");
+
+      /* ======================================================
+         🔥 0. CACHE CATEGORY
+      ====================================================== */
+      const catRes = await client.query("SELECT id FROM categories");
+      const categorySet = new Set(catRes.rows.map(c => c.id));
+
+      /* ======================================================
+         🔥 1. UPSERT TOPPINGS (BATCH)
+      ====================================================== */
+      const toppingValues = [];
+      const toppingParams = [];
+
+      toppings.forEach((row, i) => {
+        const name = row.name?.trim();
+        if (!name) return;
+
+        const normalized = normalizeText(name);
+
+        toppingValues.push(
+          `($${i * 6 + 1}, $${i * 6 + 2}, $${i * 6 + 3}, $${i * 6 + 4}, $${i * 6 + 5}, $${i * 6 + 6})`
+        );
+
+        toppingParams.push(
           name,
           normalized,
           Number(row.price) || 0,
           Number(row.is_active) === 1,
           tenantId,
           storeId
-        ]
-      );
-    }
+        );
+      });
 
-    /* =========================================
-       3. OVERWRITE MENU
-    ========================================= */
-    if (overwrite) {
-      await client.query("DELETE FROM menu_toppings WHERE tenant_id = $1", [tenantId]);
-      await client.query("DELETE FROM menu_items WHERE tenant_id = $1", [tenantId]);
-    }
-
-    /* =========================================
-       4. IMPORT MENU
-    ========================================= */
-    for (const row of menus) {
-
-      const name = row.name?.trim();
-      if (!name) continue;
-
-      const image = normalizeText(name);
-
-      const categoryId = row.category_id?.trim();
-
-      const cat = await client.query(
-        "SELECT id FROM categories WHERE id = $1 AND tenant_id = $2",
-        [categoryId, tenantId]
-      );
-
-      if (!cat.rowCount) {
-        throw new Error(`Category không tồn tại: ${categoryId}`);
+      if (toppingValues.length > 0) {
+        await client.query(`
+          INSERT INTO toppings
+          (name, normalized_name, price, is_active, tenant_id, store_id)
+          VALUES ${toppingValues.join(",")}
+          ON CONFLICT (normalized_name)
+          DO UPDATE SET
+            price = EXCLUDED.price,
+            is_active = EXCLUDED.is_active
+        `, toppingParams);
       }
 
-      await client.query(
-        `
-        INSERT INTO menu_items
-        (name, price, area, category_id, image, sort_order, is_active, tenant_id, store_id)
-        VALUES ($1,$2,$3,$4,$5,$6,true,$7,$8)
-        `,
-        [
+      /* ======================================================
+         🔥 2. OVERWRITE
+      ====================================================== */
+      if (overwrite) {
+        await client.query("DELETE FROM menu_toppings WHERE tenant_id=$1", [tenantId]);
+        await client.query("DELETE FROM menu_items WHERE tenant_id=$1", [tenantId]);
+      }
+
+      /* ======================================================
+         🔥 3. INSERT MENU (BATCH)
+      ====================================================== */
+      const menuValues = [];
+      const menuParams = [];
+
+      menus.forEach((row, i) => {
+        const name = row.name?.trim();
+        if (!name) return;
+
+        const categoryId = row.category_id?.trim();
+        if (!categorySet.has(categoryId)) {
+          throw new Error(`❌ Category không tồn tại: ${categoryId}`);
+        }
+
+        const image = normalizeText(name);
+
+        menuValues.push(
+          `($${i * 9 + 1}, $${i * 9 + 2}, $${i * 9 + 3}, $${i * 9 + 4}, $${i * 9 + 5}, $${i * 9 + 6}, $${i * 9 + 7}, $${i * 9 + 8}, $${i * 9 + 9})`
+        );
+
+        menuParams.push(
           name,
           Number(row.price) || 0,
           row.area,
           categoryId,
           image,
           Number(row.sort_order) || 0,
+          true,
           tenantId,
           storeId
-        ]
-      );
-    }
+        );
+      });
 
-    /* =========================================
-       5. IMPORT MENU_TOPPINGS
-    ========================================= */
-    for (const row of menuToppings) {
+      if (menuValues.length > 0) {
+        await client.query(`
+          INSERT INTO menu_items
+          (name, price, area, category_id, image, sort_order, is_active, tenant_id, store_id)
+          VALUES ${menuValues.join(",")}
+        `, menuParams);
+      }
 
-      const menuImage = normalizeText(row.menu_name || "");
-      const toppingNorm = normalizeText(row.topping_name || "");
+      /* ======================================================
+         🔥 4. CACHE MENU + TOPPING
+      ====================================================== */
+      const menuMap = new Map();
+      const toppingMap = new Map();
 
-      if (!menuImage || !toppingNorm) continue;
-
-      const menu = await client.query(
-        "SELECT id FROM menu_items WHERE image = $1 AND tenant_id = $2",
-        [menuImage, tenantId]
-      );
-
-      const topping = await client.query(
-        "SELECT id FROM toppings WHERE normalized_name = $1 AND tenant_id = $2",
-        [toppingNorm, tenantId]
+      const menuRes = await client.query(
+        "SELECT id, image FROM menu_items WHERE tenant_id=$1",
+        [tenantId]
       );
 
-      if (!menu.rowCount || !topping.rowCount) continue;
+      menuRes.rows.forEach(m => menuMap.set(m.image, m.id));
 
-      await client.query(
-        `
-        INSERT INTO menu_toppings
-        (menu_id, topping_id, required, max_quantity, tenant_id)
-        VALUES ($1,$2,$3,$4,$5)
-        `,
-        [
-          menu.rows[0].id,
-          topping.rows[0].id,
+      const toppingRes = await client.query(
+        "SELECT id, normalized_name FROM toppings WHERE tenant_id=$1",
+        [tenantId]
+      );
+
+      toppingRes.rows.forEach(t => toppingMap.set(t.normalized_name, t.id));
+
+      /* ======================================================
+         🔥 5. INSERT MENU_TOPPINGS (BATCH)
+      ====================================================== */
+      const mtValues = [];
+      const mtParams = [];
+
+      menuToppings.forEach((row, i) => {
+        const menuId = menuMap.get(normalizeText(row.menu_name));
+        const toppingId = toppingMap.get(normalizeText(row.topping_name));
+
+        if (!menuId || !toppingId) return;
+
+        mtValues.push(
+          `($${i * 6 + 1}, $${i * 6 + 2}, $${i * 6 + 3}, $${i * 6 + 4}, $${i * 6 + 5}, $${i * 6 + 6})`
+        );
+
+        mtParams.push(
+          menuId,
+          toppingId,
           Number(row.required) === 1,
           Number(row.max_quantity) || 1,
-          tenantId
-        ]
-      );
+          tenantId,
+          storeId
+        );
+      });
+
+      if (mtValues.length > 0) {
+        await client.query(`
+          INSERT INTO menu_toppings
+          (menu_id, topping_id, required, max_quantity, tenant_id, store_id)
+          VALUES ${mtValues.join(",")}
+        `, mtParams);
+      }
+
+      await client.query("COMMIT");
+
+      res.json({
+        message: "✅ Import FULL siêu nhanh 🚀",
+        menu: menus.length,
+        toppings: toppings.length,
+        links: menuToppings.length
+      });
+
+    } catch (err) {
+      await client.query("ROLLBACK");
+      console.error("IMPORT ERROR:", err);
+      res.status(500).json({ message: err.message });
+    } finally {
+      client.release();
+      fs.unlinkSync(req.file.path);
     }
-
-    await client.query("COMMIT");
-
-    res.json({
-      message: "✅ Import thành công",
-      menu: menus.length,
-      toppings: toppings.length,
-      links: menuToppings.length
-    });
-
-  } catch (err) {
-    await client.query("ROLLBACK");
-    console.error("IMPORT ERROR:", err);
-    res.status(500).json({ message: err.message });
-  } finally {
-    client.release();
-    fs.unlinkSync(req.file.path);
   }
-});
+);
 
 export default router;
