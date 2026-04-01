@@ -34,10 +34,11 @@ app.set("trust proxy", 1);
 app.use("/api/qr", qrRoutes);
 
 /* ===== GLOBAL MIDDLEWARE ===== */
+app.options("*", cors());
 
 app.use(cors({
   origin: "*",
-  methods: ["GET","POST","PUT","DELETE"],
+  methods: ["GET","POST","PUT","DELETE", "OPTIONS"],
   allowedHeaders: [
     "Content-Type",
     "Authorization",
