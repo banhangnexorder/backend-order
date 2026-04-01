@@ -24,25 +24,23 @@ dotenv.config();
 
 const app = express();
 
-const limiter = rateLimit({
-  windowMs: 1000,
-  max: 50
+app.use("/api/", (req, res, next) => {
+  if (req.method === "OPTIONS") return next();
+  return limiter(req, res, next);
 });
-
-app.use("/api/", limiter);
 app.set("trust proxy", 1);
 app.use("/api/qr", qrRoutes);
 
 /* ===== GLOBAL MIDDLEWARE ===== */
-app.options("*", cors());
 
 app.use(cors({
-  origin: "*",
-  methods: ["GET","POST","PUT","DELETE", "OPTIONS"],
+  origin: true,
+  credentials: true,
+  methods: ["GET","POST","PUT","DELETE","OPTIONS"],
   allowedHeaders: [
     "Content-Type",
     "Authorization",
-    "x-qr-token" // ✅ thêm dòng này
+    "x-qr-token"
   ]
 }));
 
@@ -59,7 +57,8 @@ const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: "*",
+    origin: true,
+    credentials: true,
     methods: ["GET","POST"]
   }
 });
