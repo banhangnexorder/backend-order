@@ -29,23 +29,19 @@ const limiter = rateLimit({
   max: 50
 });
 
-app.use("/api/", (req, res, next) => {
-  if (req.method === "OPTIONS") return next();
-  return limiter(req, res, next);
-});
+app.use("/api/", limiter);
 app.set("trust proxy", 1);
 app.use("/api/qr", qrRoutes);
 
 /* ===== GLOBAL MIDDLEWARE ===== */
 
 app.use(cors({
-  origin: true,
-  credentials: true,
-  methods: ["GET","POST","PUT","DELETE","OPTIONS"],
+  origin: "*",
+  methods: ["GET","POST","PUT","DELETE"],
   allowedHeaders: [
     "Content-Type",
     "Authorization",
-    "x-qr-token"
+    "x-qr-token" // ✅ thêm dòng này
   ]
 }));
 
@@ -62,8 +58,7 @@ const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: true,
-    credentials: true,
+    origin: "*",
     methods: ["GET","POST"]
   }
 });
