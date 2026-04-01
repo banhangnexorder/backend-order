@@ -24,6 +24,11 @@ dotenv.config();
 
 const app = express();
 
+const limiter = rateLimit({
+  windowMs: 1000,
+  max: 50
+});
+
 app.use("/api/", (req, res, next) => {
   if (req.method === "OPTIONS") return next();
   return limiter(req, res, next);
