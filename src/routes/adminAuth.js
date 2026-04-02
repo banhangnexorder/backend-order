@@ -22,7 +22,7 @@ router.post("/login", async (req, res) => {
 
   if (!ok) {
     return res.status(401).json({ message: "Sai mật khẩu" });
-  }
+  } 
 
   const token = jwt.sign(
     { id: user.id, role: user.role, store_id: user.store_id,
