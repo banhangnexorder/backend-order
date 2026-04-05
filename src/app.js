@@ -19,6 +19,7 @@ import adminImportFull from "./routes/adminImportFull.js";
 import adminAuth from "./middleware/adminAuth.js";
 import rateLimit from "express-rate-limit";
 import qrRoutes from "./routes/qr.js";
+import registerStore from "./routes/registerStore.js";
 
 dotenv.config();
 
@@ -29,19 +30,16 @@ const limiter = rateLimit({
   max: 50
 });
 
-app.use("/api/", limiter);
 app.set("trust proxy", 1);
-app.use("/api/qr", qrRoutes);
 
 /* ===== GLOBAL MIDDLEWARE ===== */
-
 app.use(cors({
   origin: "*",
   methods: ["GET","POST","PUT","DELETE"],
   allowedHeaders: [
     "Content-Type",
     "Authorization",
-    "x-qr-token" // ✅ thêm dòng này
+    "x-qr-token"
   ]
 }));
 
@@ -51,6 +49,13 @@ app.use((req, res, next) => {
   res.set("Cache-Control", "no-store");
   next();
 });
+
+/* ===== PUBLIC ROUTES ===== */
+app.use("/api/register", registerStore);
+app.use("/api/qr", qrRoutes);
+
+/* ===== RATE LIMIT ===== */
+app.use("/api/", limiter);
 
 /* ===== HTTP + SOCKET ===== */
 
@@ -68,7 +73,6 @@ app.set("io", io);
 io.on("connection", socket => {
   console.log("⚡ Client connected:", socket.id);
 
-  /* JOIN STORE ROOM */
   socket.on("join_store", (store_id) => {
     const room = `store_${store_id}`;
     socket.join(room);
@@ -82,6 +86,8 @@ io.on("connection", socket => {
 
 /* ===== STATIC FILES ===== */
 app.use("/uploads", express.static(path.resolve("src/uploads")));
+
+/* ===== PRIVATE ROUTES ===== */
 app.use("/api/admin", adminLogin);
 app.use("/api/menu", menuRoutes);
 app.use("/api", authRoutes);
