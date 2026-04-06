@@ -96,6 +96,11 @@ app.use("/api/admin/menu-images", adminAuth, menuImages);
 app.use("/api/admin", adminImportFull);
 app.use("/api/orders", orderRoutes);
 
+
+app.get("/ping", (req, res) => {
+  res.send("pong");
+});
+
 const PORT = process.env.PORT || 4000;
 
 async function startServer() {
