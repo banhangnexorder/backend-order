@@ -17,10 +17,17 @@ router.post("/", async (req, res) => {
   try {
     await client.query("BEGIN");
 
-    // 1. Tạo store
+    // 0. tạo tenant
+    const tenantRes = await client.query(
+    `INSERT INTO tenants DEFAULT VALUES RETURNING id`
+    );
+
+    const tenant_id = tenantRes.rows[0].id;
+
+    // 1. tạo store
     const storeRes = await client.query(
-      `INSERT INTO stores (name) VALUES ($1) RETURNING id`,
-      [store_name]
+    `INSERT INTO stores (name, tenant_id) VALUES ($1, $2) RETURNING id`,
+    [store_name, tenant_id]
     );
 
     const store_id = storeRes.rows[0].id;
