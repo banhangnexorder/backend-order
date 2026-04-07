@@ -37,6 +37,11 @@ router.post("/upload-excel", verifyToken, upload.single("file"), async (req, res
     try {
       await client.query("BEGIN");
 
+      await client.query(
+        `DELETE FROM menu_items WHERE store_id=$1`,
+        [store_id]
+      );
+
       for (const item of rows) {
         if (!item.name) continue;
 
@@ -63,10 +68,13 @@ router.post("/upload-excel", verifyToken, upload.single("file"), async (req, res
 
       await client.query("COMMIT");
 
+      setCache(`menu:${store_id}`, null); // clear cache
+
       res.json({
         message: "✅ Import menu thành công",
         total: rows.length
       });
+
     } catch (e) {
       await client.query("ROLLBACK");
       throw e;
@@ -110,10 +118,12 @@ router.get("/", verifyQrToken, async (req, res) => {
         m.image,
         m.sort_order,
         EXISTS (
-          SELECT 1 FROM menu_toppings mt WHERE mt.menu_id = m.id
+          SELECT 1 
+          FROM menu_toppings mt
+          WHERE mt.menu_id = m.id
         ) AS has_toppings
       FROM menu_items m
-      JOIN categories c ON c.id = m.category_id
+      JOIN categories c ON c.id = m.category_id AND c.store_id = m.store_id
       WHERE
         m.is_active = true
         AND m.store_id = $1
