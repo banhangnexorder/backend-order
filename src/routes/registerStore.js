@@ -50,11 +50,11 @@ router.post("/", async (req, res) => {
 
     /* ===== 3. CREATE ADMIN ===== */
     await client.query(
-      `
-      INSERT INTO users (username, password, role, store_id)
-      VALUES ($1, $2, 'admin', $3)
-      `,
-      [username, hashed, store_id]
+        `
+        INSERT INTO users (username, password, role, store_id, tenant_id)
+        VALUES ($1, $2, 'admin', $3, $4)
+        `,
+        [username, hashed, store_id, tenant_id]
     );
 
     await client.query("COMMIT");
