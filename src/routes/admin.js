@@ -20,6 +20,8 @@ router.use(requireRole("admin", "staff"));
 ===================== */
 router.get("/stats", async (req, res) => {
   try {
+    const store_id = req.user.store_id; // ✅
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -27,45 +29,45 @@ router.get("/stats", async (req, res) => {
       `
       SELECT COUNT(*) 
       FROM orders 
-      WHERE created_at >= $1
+      WHERE store_id=$1 AND created_at >= $2
       `,
-      [today]
+      [store_id, today]
     );
 
     const pendingOrders = await pool.query(
       `
       SELECT COUNT(*) 
       FROM orders 
-      WHERE status='pending' AND created_at >= $1
+      WHERE store_id=$1 AND status='pending' AND created_at >= $2
       `,
-      [today]
+      [store_id, today]
     );
 
     const doneOrders = await pool.query(
       `
       SELECT COUNT(*) 
       FROM orders 
-      WHERE status='done' AND created_at >= $1
+      WHERE store_id=$1 AND status='done' AND created_at >= $2
       `,
-      [today]
+      [store_id, today]
     );
 
     const cancelledOrders = await pool.query(
       `
       SELECT COUNT(*) 
       FROM orders 
-      WHERE status='cancelled' AND created_at >= $1
+      WHERE store_id=$1 AND status='cancelled' AND created_at >= $2
       `,
-      [today]
+      [store_id, today]
     );
 
     const revenue = await pool.query(
       `
       SELECT COALESCE(SUM(total),0) AS revenue
       FROM orders
-      WHERE status='done' AND created_at >= $1
+      WHERE store_id=$1 AND status='done' AND created_at >= $2
       `,
-      [today]
+      [store_id, today]
     );
 
     const lateOrders = await pool.query(
@@ -73,10 +75,11 @@ router.get("/stats", async (req, res) => {
       SELECT id, table_id,
         FLOOR(EXTRACT(EPOCH FROM (now() - created_at))/60) AS minutes
       FROM orders
-      WHERE status='pending'
+      WHERE store_id=$1 AND status='pending'
         AND now() - created_at > interval '15 minutes'
       ORDER BY minutes DESC
-      `
+      `,
+      [store_id]
     );
 
     res.json({
@@ -154,9 +157,8 @@ router.get("/dashboard", async (req, res) => {
   const { range = "today" } = req.query;
 
   try {
-    /* =========================
-       🇻🇳 LẤY NGÀY THEO GIỜ VIỆT NAM
-    ========================== */
+    const store_id = req.user.store_id; // ✅
+
     const vnNow = new Date(
       new Date().toLocaleString("en-US", {
         timeZone: "Asia/Ho_Chi_Minh",
@@ -185,9 +187,7 @@ router.get("/dashboard", async (req, res) => {
       fromDate = `${vnNow.getFullYear()}-01-01`;
     }
 
-    /* =========================
-       🔥 SUMMARY (1 QUERY)
-    ========================== */
+    /* ===== SUMMARY ===== */
     const summary = await pool.query(
       `
       SELECT
@@ -200,30 +200,29 @@ router.get("/dashboard", async (req, res) => {
           0
         ) AS revenue
       FROM orders
-      WHERE (created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date >= $1
+      WHERE store_id=$1
+        AND (created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date >= $2
       `,
-      [fromDate]
+      [store_id, fromDate]
     );
 
     const row = summary.rows[0];
 
-    /* =========================
-       LATE ORDERS
-    ========================== */
+    /* ===== LATE ORDERS ===== */
     const lateOrders = await pool.query(
       `
       SELECT id, table_id,
         FLOOR(EXTRACT(EPOCH FROM (now() - created_at))/60) AS minutes
       FROM orders
-      WHERE status='pending'
+      WHERE store_id=$1
+        AND status='pending'
         AND now() - created_at > interval '15 minutes'
       ORDER BY minutes DESC
-      `
+      `,
+      [store_id]
     );
 
-    /* =========================
-       CHART DATA
-    ========================== */
+    /* ===== CHART ===== */
     const chartData = await pool.query(
       `
       SELECT 
@@ -237,11 +236,12 @@ router.get("/dashboard", async (req, res) => {
           0
         ) AS revenue
       FROM orders
-      WHERE (created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date >= $1
+      WHERE store_id=$1
+        AND (created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date >= $2
       GROUP BY day
       ORDER BY MIN(created_at)
       `,
-      [fromDate]
+      [store_id, fromDate]
     );
 
     res.json({
