@@ -99,8 +99,14 @@ router.get("/stats", async (req, res) => {
 router.get("/orders", async (req, res) => {
   const { from, to, status } = req.query;
 
+  const store_id = req.user.store_id; // ✅ LẤY TỪ TOKEN
+
   let where = [];
   let values = [];
+
+  // 🔥 QUAN TRỌNG NHẤT
+  values.push(store_id);
+  where.push(`store_id = $${values.length}`);
 
   if (from) {
     values.push(from);
@@ -121,7 +127,7 @@ router.get("/orders", async (req, res) => {
     where.push(`status = $${values.length}`);
   }
 
-  const whereSQL = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  const whereSQL = `WHERE ${where.join(" AND ")}`;
 
   try {
     const result = await pool.query(
