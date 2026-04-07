@@ -31,8 +31,8 @@ router.post("/", async (req, res) => {
 
     /* ===== 0. CREATE TENANT ===== */
     const tenantRes = await client.query(
-      `INSERT INTO tenants (tenant) VALUES ($1) RETURNING id`,
-      [store_name] // dùng tên quán luôn
+        `INSERT INTO tenants (name) VALUES ($1) RETURNING id`,
+        [store_name]
     );
 
     const tenant_id = tenantRes.rows[0].id;
