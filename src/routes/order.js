@@ -24,6 +24,22 @@ router.post("/", verifyQrToken, async (req, res) => {
       return res.status(400).json({ error: "Store not found" });
     }
 
+    const today = new Date().toISOString().slice(0, 10);
+
+    /* ===== LOCK & INCREMENT ===== */
+    const counter = await pool.query(
+      `
+      INSERT INTO order_counters (store_id, order_date, last_no)
+      VALUES ($1, $2, 1)
+      ON CONFLICT (store_id, order_date)
+      DO UPDATE SET last_no = order_counters.last_no + 1
+      RETURNING last_no
+      `,
+      [store_id, today]
+    );
+
+    const order_no = counter.rows[0].last_no;
+
     const tenant_id = store.rows[0].tenant_id;
 
     const areas = [...new Set(items.map(i => i.area).filter(Boolean))];
@@ -43,9 +59,11 @@ router.post("/", verifyQrToken, async (req, res) => {
         items,
         total,
         status,
-        areas_status
+        areas_status,
+        order_no,
+        order_date
       )
-      VALUES ($1,$2,$3,$4,$5,$6,'pending',$7)
+      VALUES ($1,$2,$3,$4,$5,$6,'pending',$7,$8,$9)
       RETURNING *
       `,
       [
@@ -56,6 +74,8 @@ router.post("/", verifyQrToken, async (req, res) => {
         JSON.stringify(items),
         total,
         JSON.stringify(areasStatus),
+        order_no,
+        today
       ]
     );
 

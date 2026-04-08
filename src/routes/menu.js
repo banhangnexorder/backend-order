@@ -135,6 +135,8 @@ router.get("/", verifyQrToken, async (req, res) => {
       image_url: item.image || "/uploads/menu/default"
     }));
 
+    console.log("🔥 DB RESPONSE:", data);
+
     setCache(cacheKey, data);
 
     res.json(data);
