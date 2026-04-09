@@ -73,10 +73,13 @@ router.post(
         const categoryCache = {};
 
         for (const item of rows) {
-          if (!item.name) continue;
+          const name = item.name || item["Tên món"];
+          const price = item.price || item["Giá"];
+          const area = item.area || item["Khu"];
 
-          /* ===== CATEGORY ===== */
-          const categoryName = extractCategory(item.name);
+          if (!name) continue;
+
+          const categoryName = extractCategory(name);
 
           let categoryId = categoryCache[categoryName];
 
@@ -103,8 +106,7 @@ router.post(
             categoryCache[categoryName] = categoryId;
           }
 
-          /* ===== INSERT MENU ===== */
-          const image = normalizeText(item.name);
+          const image = normalizeText(name);
 
           await client.query(
             `
@@ -114,9 +116,9 @@ router.post(
             `,
             [
               store_id,
-              item.name,
-              item.price || 0,
-              item.area || "bar",
+              name,
+              price || 0,
+              area || "bar",
               categoryId,
               image,
               item.sort_order || 0
