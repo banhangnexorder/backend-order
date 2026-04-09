@@ -15,7 +15,7 @@ const upload = multer({
 
 router.post(
   "/import/full",
-  verifyToken,
+  verifyToken, // 🔥 BẮT BUỘC
   upload.single("file"),
   async (req, res) => {
     if (!req.file) {
@@ -43,15 +43,14 @@ router.post(
       /* ======================================================
          🔥 0. CATEGORY CACHE (THEO STORE)
       ====================================================== */
-      const categoryCache = new Map();
-
       const catRes = await client.query(
         "SELECT id, name FROM categories WHERE store_id=$1",
         [storeId]
       );
 
+      const categoryMap = new Map();
       catRes.rows.forEach(c => {
-        categoryCache.set(c.name.toLowerCase(), c.id);
+        categoryMap.set(c.id, c.id);
       });
 
       /* ======================================================
@@ -81,7 +80,7 @@ router.post(
       }
 
       /* ======================================================
-         🔥 2. OVERWRITE
+         🔥 2. OVERWRITE (OPTIONAL)
       ====================================================== */
       if (overwrite) {
         await client.query("DELETE FROM menu_toppings WHERE store_id=$1", [storeId]);
@@ -89,30 +88,35 @@ router.post(
       }
 
       /* ======================================================
-         🔥 3. INSERT MENU + AUTO CATEGORY
+         🔥 3. CATEGORY AUTO CREATE
+      ====================================================== */
+      for (const row of menus) {
+        const categoryId = row.category_id?.trim();
+        if (!categoryId) continue;
+
+        if (!categoryMap.has(categoryId)) {
+          const inserted = await client.query(
+            `
+            INSERT INTO categories (id, name, tenant_id, store_id)
+            VALUES ($1,$2,$3,$4)
+            ON CONFLICT (id) DO NOTHING
+            RETURNING id
+            `,
+            [categoryId, categoryId, tenantId, storeId]
+          );
+
+          categoryMap.set(categoryId, categoryId);
+        }
+      }
+
+      /* ======================================================
+         🔥 4. INSERT MENU
       ====================================================== */
       for (const row of menus) {
         const name = row.name?.trim();
         if (!name) continue;
 
-        const categoryName = (row.category_id || "Khác").trim();
-
-        let categoryId = categoryCache.get(categoryName.toLowerCase());
-
-        if (!categoryId) {
-          const inserted = await client.query(
-            `
-            INSERT INTO categories (name, tenant_id, store_id, sort_order)
-            VALUES ($1,$2,$3,0)
-            RETURNING id
-            `,
-            [categoryName, tenantId, storeId]
-          );
-
-          categoryId = inserted.rows[0].id;
-
-          categoryCache.set(categoryName.toLowerCase(), categoryId);
-        }
+        const categoryId = row.category_id?.trim();
 
         const image = normalizeText(name);
 
@@ -136,7 +140,7 @@ router.post(
       }
 
       /* ======================================================
-         🔥 4. MAP MENU & TOPPING
+         🔥 5. MAP MENU & TOPPING
       ====================================================== */
       const menuMap = new Map();
       const toppingMap = new Map();
@@ -146,21 +150,17 @@ router.post(
         [storeId]
       );
 
-      menuRes.rows.forEach(m => {
-        menuMap.set(m.image, m.id);
-      });
+      menuRes.rows.forEach(m => menuMap.set(m.image, m.id));
 
       const toppingRes = await client.query(
         "SELECT id, normalized_name FROM toppings WHERE store_id=$1",
         [storeId]
       );
 
-      toppingRes.rows.forEach(t => {
-        toppingMap.set(t.normalized_name, t.id);
-      });
+      toppingRes.rows.forEach(t => toppingMap.set(t.normalized_name, t.id));
 
       /* ======================================================
-         🔥 5. INSERT MENU_TOPPINGS
+         🔥 6. INSERT MENU_TOPPINGS
       ====================================================== */
       for (const row of menuToppings) {
         const menuId = menuMap.get(normalizeText(row.menu_name));

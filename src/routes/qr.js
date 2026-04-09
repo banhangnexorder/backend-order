@@ -1,32 +1,40 @@
-// routes/qr.js
 import express from "express";
-import jwt from "jsonwebtoken";
+import crypto from "crypto";
+import { pool } from "../db.js";
 
 const router = express.Router();
 
-router.get("/generate", (req, res) => {
+function generateShortCode(length = 6) {
+  return crypto.randomBytes(4).toString("hex").slice(0, length);
+}
+
+router.get("/generate", async (req, res) => {
   const { store_id, table_id } = req.query;
 
   if (!store_id || !table_id) {
     return res.status(400).json({ error: "Missing params" });
   }
 
-  const token = jwt.sign(
-    {
-      store_id,
-      table_id
-    },
-    process.env.JWT_SECRET,
-    {
-      expiresIn: "30d"
-    }
-  );
+  try {
+    const code = generateShortCode(6);
 
-  res.json({
-    token,
-    url: `${process.env.FRONTEND_URL}/menu?t=${token}`
-  });
-  console.log("GENERATE SECRET:", process.env.JWT_SECRET);
+    await pool.query(
+      `
+      INSERT INTO qr_codes (code, store_id, table_id)
+      VALUES ($1,$2,$3)
+      `,
+      [code, store_id, table_id]
+    );
+
+    res.json({
+      code,
+      url: `${process.env.FRONTEND_URL}/menu?c=${code}` // 🔥 NGẮN GỌN
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "QR generate error" });
+  }
 });
 
 export default router;
