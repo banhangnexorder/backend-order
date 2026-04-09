@@ -36,120 +36,120 @@ function extractCategory(name) {
 }
 
 /* ===== IMPORT MENU ===== */
-router.post(
-  "/upload-excel",
-  verifyToken,
-  upload.single("file"),
-  async (req, res) => {
-    const store_id = req.user.store_id;
-    console.log("🔥 store_idstore_idstore_idstore_idstore_id:", store_id);
-    try {
-      if (!req.file) {
-        return res.status(400).json({ message: "❌ Không có file" });
-      }
+// router.post(
+//   "/upload-excel",
+//   verifyToken,
+//   upload.single("file"),
+//   async (req, res) => {
+//     const store_id = req.user.store_id;
+//     console.log("🔥 store_idstore_idstore_idstore_idstore_id:", store_id);
+//     try {
+//       if (!req.file) {
+//         return res.status(400).json({ message: "❌ Không có file" });
+//       }
 
-      const workbook = XLSX.readFile(req.file.path);
-      const sheet = workbook.Sheets[workbook.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(sheet);
+//       const workbook = XLSX.readFile(req.file.path);
+//       const sheet = workbook.Sheets[workbook.SheetNames[0]];
+//       const rows = XLSX.utils.sheet_to_json(sheet);
 
-      if (!rows.length) {
-        return res.status(400).json({ message: "❌ File rỗng" });
-      }
+//       if (!rows.length) {
+//         return res.status(400).json({ message: "❌ File rỗng" });
+//       }
 
-      const client = await pool.connect();
+//       const client = await pool.connect();
 
-      try {
-        await client.query("BEGIN");
+//       try {
+//         await client.query("BEGIN");
 
-        /* ===== XÓA DATA CŨ ===== */
-        await client.query(
-          `DELETE FROM menu_items WHERE store_id=$1`,
-          [store_id]
-        );
+//         /* ===== XÓA DATA CŨ ===== */
+//         await client.query(
+//           `DELETE FROM menu_items WHERE store_id=$1`,
+//           [store_id]
+//         );
 
-        // ⚠️ KHÔNG xoá categories → để reuse
+//         // ⚠️ KHÔNG xoá categories → để reuse
 
-        /* ===== CACHE CATEGORY ===== */
-        const categoryCache = {};
+//         /* ===== CACHE CATEGORY ===== */
+//         const categoryCache = {};
 
-        for (const item of rows) {
-          const name = item.name || item["Tên món"];
-          const price = item.price || item["Giá"];
-          const area = item.area || item["Khu"];
+//         for (const item of rows) {
+//           const name = item.name || item["Tên món"];
+//           const price = item.price || item["Giá"];
+//           const area = item.area || item["Khu"];
 
-          if (!name) continue;
+//           if (!name) continue;
 
-          const categoryName = extractCategory(name);
+//           const categoryName = extractCategory(name);
 
-          let categoryId = categoryCache[categoryName];
+//           let categoryId = categoryCache[categoryName];
 
-          console.log("🔥 categoryIdcategoryIdcategoryIdcategoryId:", categoryId);
+//           console.log("🔥 categoryIdcategoryIdcategoryIdcategoryId:", categoryId);
 
-          if (!categoryId) {
-            const existing = await client.query(
-              `SELECT id FROM categories WHERE LOWER(name)=LOWER($1) AND store_id=$2`,
-              [categoryName, store_id]
-            );
+//           if (!categoryId) {
+//             const existing = await client.query(
+//               `SELECT id FROM categories WHERE LOWER(name)=LOWER($1) AND store_id=$2`,
+//               [categoryName, store_id]
+//             );
 
-            if (existing.rows.length > 0) {
-              categoryId = existing.rows[0].id;
-            } else {
-              const inserted = await client.query(
-                `
-                INSERT INTO categories (name, store_id, sort_order)
-                VALUES ($1,$2,0)
-                RETURNING id
-                `,
-                [categoryName, store_id]
-              );
-              categoryId = inserted.rows[0].id;
-            }
+//             if (existing.rows.length > 0) {
+//               categoryId = existing.rows[0].id;
+//             } else {
+//               const inserted = await client.query(
+//                 `
+//                 INSERT INTO categories (name, store_id, sort_order)
+//                 VALUES ($1,$2,0)
+//                 RETURNING id
+//                 `,
+//                 [categoryName, store_id]
+//               );
+//               categoryId = inserted.rows[0].id;
+//             }
 
-            categoryCache[categoryName] = categoryId;
-          }
+//             categoryCache[categoryName] = categoryId;
+//           }
 
-          const image = normalizeText(name);
+//           const image = normalizeText(name);
 
-          await client.query(
-            `
-            INSERT INTO menu_items
-            (store_id, name, price, area, category_id, image, sort_order, is_active)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,true)
-            `,
-            [
-              store_id,
-              name,
-              price || 0,
-              area || "bar",
-              categoryId,
-              image,
-              item.sort_order || 0
-            ]
-          );
-        }
+//           await client.query(
+//             `
+//             INSERT INTO menu_items
+//             (store_id, name, price, area, category_id, image, sort_order, is_active)
+//             VALUES ($1,$2,$3,$4,$5,$6,$7,true)
+//             `,
+//             [
+//               store_id,
+//               name,
+//               price || 0,
+//               area || "bar",
+//               categoryId,
+//               image,
+//               item.sort_order || 0
+//             ]
+//           );
+//         }
 
-        await client.query("COMMIT");
+//         await client.query("COMMIT");
 
-        setCache(`menu:${store_id}`, null);
+//         setCache(`menu:${store_id}`, null);
 
-        res.json({
-          message: "✅ Import menu + auto category thành công",
-          total: rows.length
-        });
+//         res.json({
+//           message: "✅ Import menu + auto category thành công",
+//           total: rows.length
+//         });
 
-      } catch (err) {
-        await client.query("ROLLBACK");
-        throw err;
-      } finally {
-        client.release();
-      }
+//       } catch (err) {
+//         await client.query("ROLLBACK");
+//         throw err;
+//       } finally {
+//         client.release();
+//       }
 
-    } catch (err) {
-      console.error("IMPORT ERROR:", err);
-      res.status(500).json({ message: err.message });
-    }
-  }
-);
+//     } catch (err) {
+//       console.error("IMPORT ERROR:", err);
+//       res.status(500).json({ message: err.message });
+//     }
+//   }
+// );
 
 /* ===== GET MENU (CLIENT / POS) ===== */
 router.get("/", verifyQrToken, async (req, res) => {

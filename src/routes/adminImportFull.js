@@ -20,7 +20,7 @@ router.post(
     if (!req.file) {
       return res.status(400).json({ message: "❌ Chưa upload file Excel" });
     }
-
+    console.log("UPLOAD MENU NMTHANH");
     const overwrite = req.body.overwrite === "true";
 
     // 🔥 LẤY TỪ LOGIN ADMIN (QUAN TRỌNG)
