@@ -42,7 +42,7 @@ router.post(
   upload.single("file"),
   async (req, res) => {
     const store_id = req.user.store_id;
-
+    console.log("🔥 store_idstore_idstore_idstore_idstore_id:", store_id);
     try {
       if (!req.file) {
         return res.status(400).json({ message: "❌ Không có file" });
