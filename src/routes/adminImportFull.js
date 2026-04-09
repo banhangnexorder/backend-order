@@ -15,7 +15,7 @@ const upload = multer({
 
 router.post(
   "/import/full",
-  verifyToken, // 🔥 BẮT BUỘC
+  verifyToken,
   upload.single("file"),
   async (req, res) => {
     if (!req.file) {
@@ -34,24 +34,73 @@ router.post(
     try {
       const workbook = XLSX.readFile(req.file.path);
 
-      const menus = XLSX.utils.sheet_to_json(workbook.Sheets["menu"], { defval: "" });
-      const toppings = XLSX.utils.sheet_to_json(workbook.Sheets["toppings"], { defval: "" });
-      const menuToppings = XLSX.utils.sheet_to_json(workbook.Sheets["menu_toppings"], { defval: "" });
+      const categories = XLSX.utils.sheet_to_json(
+        workbook.Sheets["categories"],
+        { defval: "" }
+      );
+
+      const menus = XLSX.utils.sheet_to_json(
+        workbook.Sheets["menu"],
+        { defval: "" }
+      );
+
+      const toppings = XLSX.utils.sheet_to_json(
+        workbook.Sheets["toppings"] || {},
+        { defval: "" }
+      );
+
+      const menuToppings = XLSX.utils.sheet_to_json(
+        workbook.Sheets["menu_toppings"] || {},
+        { defval: "" }
+      );
 
       await client.query("BEGIN");
 
       /* ======================================================
-         🔥 0. CATEGORY CACHE (THEO STORE)
+         🔥 0. IMPORT CATEGORIES
       ====================================================== */
-      const catRes = await client.query(
-        "SELECT id, name FROM categories WHERE store_id=$1",
-        [storeId]
-      );
+      const categoryMap = new Map(); // code -> id
 
-      const categoryMap = new Map();
-      catRes.rows.forEach(c => {
-        categoryMap.set(c.id, c.id);
-      });
+      for (const row of categories) {
+        const code = row.code?.trim();
+        const name = row.name?.trim();
+        const sortOrder = Number(row.sort_order) || 0;
+
+        if (!code || !name) continue;
+
+        const existing = await client.query(
+          `SELECT id FROM categories WHERE code=$1 AND store_id=$2`,
+          [code, storeId]
+        );
+
+        let categoryId;
+
+        if (existing.rows.length > 0) {
+          categoryId = existing.rows[0].id;
+
+          await client.query(
+            `
+            UPDATE categories
+            SET name=$1, sort_order=$2
+            WHERE id=$3
+            `,
+            [name, sortOrder, categoryId]
+          );
+        } else {
+          const inserted = await client.query(
+            `
+            INSERT INTO categories (code, name, sort_order, tenant_id, store_id)
+            VALUES ($1,$2,$3,$4,$5)
+            RETURNING id
+            `,
+            [code, name, sortOrder, tenantId, storeId]
+          );
+
+          categoryId = inserted.rows[0].id;
+        }
+
+        categoryMap.set(code, categoryId);
+      }
 
       /* ======================================================
          🔥 1. UPSERT TOPPINGS
@@ -88,35 +137,18 @@ router.post(
       }
 
       /* ======================================================
-         🔥 3. CATEGORY AUTO CREATE
-      ====================================================== */
-      for (const row of menus) {
-        const categoryId = row.category_id?.trim();
-        if (!categoryId) continue;
-
-        if (!categoryMap.has(categoryId)) {
-          const inserted = await client.query(
-            `
-            INSERT INTO categories (id, name, tenant_id, store_id)
-            VALUES ($1,$2,$3,$4)
-            ON CONFLICT (id) DO NOTHING
-            RETURNING id
-            `,
-            [categoryId, categoryId, tenantId, storeId]
-          );
-
-          categoryMap.set(categoryId, categoryId);
-        }
-      }
-
-      /* ======================================================
-         🔥 4. INSERT MENU
+         🔥 3. INSERT MENU
       ====================================================== */
       for (const row of menus) {
         const name = row.name?.trim();
         if (!name) continue;
 
-        const categoryId = row.category_id?.trim();
+        const categoryCode = row.category_code?.trim();
+        const categoryId = categoryMap.get(categoryCode);
+
+        if (!categoryId) {
+          throw new Error(`❌ Không tìm thấy category: ${categoryCode}`);
+        }
 
         const image = normalizeText(name);
 
@@ -140,7 +172,7 @@ router.post(
       }
 
       /* ======================================================
-         🔥 5. MAP MENU & TOPPING
+         🔥 4. MAP MENU & TOPPING
       ====================================================== */
       const menuMap = new Map();
       const toppingMap = new Map();
@@ -160,7 +192,7 @@ router.post(
       toppingRes.rows.forEach(t => toppingMap.set(t.normalized_name, t.id));
 
       /* ======================================================
-         🔥 6. INSERT MENU_TOPPINGS
+         🔥 5. INSERT MENU_TOPPINGS
       ====================================================== */
       for (const row of menuToppings) {
         const menuId = menuMap.get(normalizeText(row.menu_name));
@@ -188,8 +220,8 @@ router.post(
       await client.query("COMMIT");
 
       res.json({
-        message: "✅ Import FULL thành công 🚀",
-        storeId,
+        message: "✅ Import FULL chuẩn POS 🚀",
+        categories: categories.length,
         menu: menus.length,
         toppings: toppings.length,
         links: menuToppings.length
