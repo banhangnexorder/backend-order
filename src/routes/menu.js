@@ -16,76 +16,136 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 }
 });
 
+/* ===== AUTO CATEGORY LOGIC ===== */
+function extractCategory(name) {
+  if (!name) return "Khác";
+
+  const lower = name.toLowerCase();
+
+  if (lower.includes("cà phê")) return "Cà phê";
+  if (lower.includes("trà")) return "Trà";
+  if (lower.includes("sinh tố")) return "Sinh tố";
+  if (lower.includes("nước")) return "Nước uống";
+  if (lower.includes("bánh")) return "Bánh";
+
+  // fallback → lấy 1-2 từ đầu
+  const words = name.trim().split(" ");
+  if (words.length >= 2) return `${words[0]} ${words[1]}`;
+
+  return words[0];
+}
+
 /* ===== IMPORT MENU ===== */
-router.post("/upload-excel", verifyToken, upload.single("file"), async (req, res) => {
-  const store_id = req.user.store_id;
-  try {
-    if (!req.file) {
-      return res.status(400).json({ message: "❌ Không có file" });
-    }
-
-    const workbook = XLSX.readFile(req.file.path);
-    const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(sheet);
-
-    if (!rows.length) {
-      return res.status(400).json({ message: "❌ File rỗng" });
-    }
-
-    const client = await pool.connect();
+router.post(
+  "/upload-excel",
+  verifyToken,
+  upload.single("file"),
+  async (req, res) => {
+    const store_id = req.user.store_id;
 
     try {
-      await client.query("BEGIN");
-
-      await client.query(
-        `DELETE FROM menu_items WHERE store_id=$1`,
-        [store_id]
-      );
-
-      for (const item of rows) {
-        if (!item.name) continue;
-
-        // 🔥 AUTO IMAGE FROM NAME
-        const image = normalizeText(item.name);
-
-        await client.query(
-          `
-          INSERT INTO menu_items
-          (store_id, name, price, area, category_id, image, sort_order, is_active)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,true)
-          `,
-          [
-            store_id,
-            item.name,
-            item.price,
-            item.area,
-            item.category_id,
-            image,
-            item.sort_order || 0
-          ]
-        );
+      if (!req.file) {
+        return res.status(400).json({ message: "❌ Không có file" });
       }
 
-      await client.query("COMMIT");
+      const workbook = XLSX.readFile(req.file.path);
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet);
 
-      setCache(`menu:${store_id}`, null); // clear cache
+      if (!rows.length) {
+        return res.status(400).json({ message: "❌ File rỗng" });
+      }
 
-      res.json({
-        message: "✅ Import menu thành công",
-        total: rows.length
-      });
+      const client = await pool.connect();
 
-    } catch (e) {
-      await client.query("ROLLBACK");
-      throw e;
-    } finally {
-      client.release();
+      try {
+        await client.query("BEGIN");
+
+        /* ===== XÓA DATA CŨ ===== */
+        await client.query(
+          `DELETE FROM menu_items WHERE store_id=$1`,
+          [store_id]
+        );
+
+        // ⚠️ KHÔNG xoá categories → để reuse
+
+        /* ===== CACHE CATEGORY ===== */
+        const categoryCache = {};
+
+        for (const item of rows) {
+          if (!item.name) continue;
+
+          /* ===== CATEGORY ===== */
+          const categoryName = extractCategory(item.name);
+
+          let categoryId = categoryCache[categoryName];
+
+          if (!categoryId) {
+            const existing = await client.query(
+              `SELECT id FROM categories WHERE LOWER(name)=LOWER($1) AND store_id=$2`,
+              [categoryName, store_id]
+            );
+
+            if (existing.rows.length > 0) {
+              categoryId = existing.rows[0].id;
+            } else {
+              const inserted = await client.query(
+                `
+                INSERT INTO categories (name, store_id, sort_order)
+                VALUES ($1,$2,0)
+                RETURNING id
+                `,
+                [categoryName, store_id]
+              );
+              categoryId = inserted.rows[0].id;
+            }
+
+            categoryCache[categoryName] = categoryId;
+          }
+
+          /* ===== INSERT MENU ===== */
+          const image = normalizeText(item.name);
+
+          await client.query(
+            `
+            INSERT INTO menu_items
+            (store_id, name, price, area, category_id, image, sort_order, is_active)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,true)
+            `,
+            [
+              store_id,
+              item.name,
+              item.price || 0,
+              item.area || "bar",
+              categoryId,
+              image,
+              item.sort_order || 0
+            ]
+          );
+        }
+
+        await client.query("COMMIT");
+
+        setCache(`menu:${store_id}`, null);
+
+        res.json({
+          message: "✅ Import menu + auto category thành công",
+          total: rows.length
+        });
+
+      } catch (err) {
+        await client.query("ROLLBACK");
+        throw err;
+      } finally {
+        client.release();
+      }
+
+    } catch (err) {
+      console.error("IMPORT ERROR:", err);
+      res.status(500).json({ message: err.message });
     }
-  } catch (err) {
-    console.error("IMPORT ERROR:", err);
-    res.status(500).json({ message: "❌ Lỗi import menu" });
   }
-});
+);
 
 /* ===== GET MENU (CLIENT / POS) ===== */
 router.get("/", verifyQrToken, async (req, res) => {
