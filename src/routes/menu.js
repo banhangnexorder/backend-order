@@ -83,6 +83,8 @@ router.post(
 
           let categoryId = categoryCache[categoryName];
 
+          console.log("🔥 categoryIdcategoryIdcategoryIdcategoryId:", categoryId);
+
           if (!categoryId) {
             const existing = await client.query(
               `SELECT id FROM categories WHERE LOWER(name)=LOWER($1) AND store_id=$2`,
