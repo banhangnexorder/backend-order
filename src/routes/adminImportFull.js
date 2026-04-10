@@ -24,8 +24,13 @@ router.post(
 
     const overwrite = req.body.overwrite === "true";
 
+    console.log("USER:", req.user);
+
     const tenantId = req.user.tenant_id;
     const storeId = req.user.store_id;
+
+    console.log("tenantId:", tenantId);
+    console.log("storeId:", storeId);
 
     console.log("🔥 IMPORT STORE:", storeId);
 
