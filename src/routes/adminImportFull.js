@@ -148,7 +148,13 @@ router.post(
         const name = row.name?.trim();
         if (!name) continue;
 
-        const categoryCode = row.category_code?.trim();
+        const categoryCode =
+          row.category_code?.trim() ||
+          row.category_id?.trim() ||
+          row.code?.trim();
+
+        console.log("categoryCode:", categoryCode);
+
         const categoryId = categoryMap.get(categoryCode);
 
         if (!categoryId) {
