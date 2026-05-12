@@ -1,14 +1,26 @@
 import pg from "pg";
 import dotenv from "dotenv";
-dotenv.config({ path: ".env.development" });
+import fs from "fs";
 
 const { Pool } = pg;
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
-});
 
-async function run() {
+async function migrateEnv(envFile) {
+  if (!fs.existsSync(envFile)) return;
+  console.log(`\n--- Migrating ${envFile} ---`);
+  
+  const envConfig = dotenv.parse(fs.readFileSync(envFile));
+  const dbUrl = envConfig.DATABASE_URL;
+  
+  if (!dbUrl) {
+    console.log(`No DATABASE_URL found in ${envFile}`);
+    return;
+  }
+
+  const pool = new Pool({
+    connectionString: dbUrl,
+    ssl: { rejectUnauthorized: false }
+  });
+
   try {
     await pool.query("ALTER TABLE menu_items ADD COLUMN price_s INTEGER DEFAULT 0;");
     console.log("Added price_s column");
@@ -24,7 +36,15 @@ async function run() {
     console.log("Added price_l column");
   } catch (err) { console.log(err.message); }
 
-  console.log("Migration complete!");
+  await pool.end();
+  console.log(`Finished ${envFile}`);
+}
+
+async function run() {
+  await migrateEnv(".env.development");
+  await migrateEnv(".env.staging");
+  await migrateEnv(".env.production");
   process.exit(0);
 }
+
 run();
