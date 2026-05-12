@@ -5,6 +5,7 @@ import fs from "fs";
 import { pool } from "../db.js";
 import { normalizeText } from "../utils/normalizeText.js";
 import { verifyToken } from "../middleware/auth.js";
+import { clearCache } from "../utils/cache.js";
 
 const router = express.Router();
 
@@ -166,12 +167,15 @@ router.post(
         await client.query(
           `
           INSERT INTO menu_items
-          (name, price, area, category_id, image, sort_order, is_active, tenant_id, store_id)
-          VALUES ($1,$2,$3,$4,$5,$6,true,$7,$8)
+          (name, price, price_s, price_m, price_l, area, category_id, image, sort_order, is_active, tenant_id, store_id)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,true,$10,$11)
           `,
           [
             name,
             Number(row.price) || 0,
+            Number(row.price_s) || 0,
+            Number(row.price_m) || 0,
+            Number(row.price_l) || 0,
             row.area || "bar",
             categoryId,
             image,
@@ -229,6 +233,8 @@ router.post(
       }
 
       await client.query("COMMIT");
+      
+      clearCache(`menu:${storeId}`);
 
       res.json({
         message: "✅ Import FULL chuẩn POS 🚀",
